@@ -1,4 +1,1 @@
 commit	dsr	sharpe	max_dd	turnover	status	description
-bf53b1c	0.704302	0.477980	-0.214361	0.753227	keep	baseline: momentum + value equal-weight top 50
-7ead8b3	0.746971	1.055311	-0.153408	0.467149	keep	add quality (ROE+Piotroski) inv-vol weighting 75 holdings US filter
-652d986	0.000000	0.000000	0.000000	0.000000	discard	low-vol factor + 6m blend + sector cap + vol target (0 positions bug)
