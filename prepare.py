@@ -2277,15 +2277,17 @@ def summarize_trial_family(
     family_matrix: pd.DataFrame,
     current_returns: pd.Series,
     candidate_id: str | None = None,
+    inner_mutations_total: int = 0,
 ) -> dict:
     current = current_returns.dropna()
     if family_matrix.empty or family_matrix.shape[1] == 0:
         sr_hat = sharpe_daily(current)
         skew = sample_skewness(current)
         kurt = sample_kurtosis(current)
+        n_raw = max(1, int(inner_mutations_total))
         return {
             "trial_var_sr": 0.0,
-            "N_raw": 1,
+            "N_raw": n_raw,
             "N_eff": 1.0,
             "sr_hat_daily": sr_hat,
             "skew": skew,
@@ -2303,7 +2305,7 @@ def summarize_trial_family(
     sr_hat = sharpe_daily(current)
     skew = sample_skewness(current)
     kurt = sample_kurtosis(current)
-    n_raw = int(family_matrix.shape[1])
+    n_raw = max(int(family_matrix.shape[1]), int(inner_mutations_total), 1)
     n_eff = estimate_effective_independent_trials(family_matrix)
     dsr_eff, sr_star_eff = deflated_sharpe_ratio(sr_hat, trial_var, n_eff, len(current), skew, kurt)
     dsr_raw, sr_star_raw = deflated_sharpe_ratio(sr_hat, trial_var, n_raw, len(current), skew, kurt)
@@ -2402,7 +2404,12 @@ def evaluate(
         metrics["candidate_id"] = candidate_id
         family_store.upsert(audit_family_id, candidate_id, active_returns)
     family_matrix = family_store.matrix(audit_family_id)
-    family_stats = summarize_trial_family(family_matrix, active_returns, candidate_id=candidate_id)
+    family_stats = summarize_trial_family(
+        family_matrix,
+        active_returns,
+        candidate_id=candidate_id,
+        inner_mutations_total=inner_mutations_total,
+    )
     metrics.update(family_stats)
     metrics["outer_promotions_total"] = int(family_matrix.shape[1]) if not family_matrix.empty else 0
     metrics["outer_family_size_current"] = metrics["outer_promotions_total"]

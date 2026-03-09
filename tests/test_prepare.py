@@ -592,6 +592,20 @@ class PrepareTests(unittest.TestCase):
         self.assertLess(strong_p, weak_p)
         self.assertLessEqual(strong_p, family_p + 0.10)
 
+    def test_summarize_trial_family_uses_conservative_inner_mutation_count_for_n_raw(self):
+        dates = pd.bdate_range("2024-01-01", periods=80)
+        current = pd.Series(np.linspace(-0.01, 0.01, len(dates)), index=dates)
+        family = pd.DataFrame({"cand_a": current}, index=dates)
+
+        stats = prepare.summarize_trial_family(
+            family,
+            current,
+            candidate_id="cand_a",
+            inner_mutations_total=37,
+        )
+
+        self.assertEqual(stats["N_raw"], 37)
+
     def test_active_slice_score_uses_multiple_monthly_blocks(self):
         dates = pd.bdate_range("2024-01-01", periods=252)
         returns = pd.Series(np.linspace(-0.01, 0.02, len(dates)), index=dates)
