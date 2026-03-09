@@ -165,6 +165,45 @@ class PrepareTests(unittest.TestCase):
             self.assertIn("net_income", panels)
             self.assertTrue(panels["net_income"]["AAA"].dropna().iloc[-1] == 100.0)
 
+    def test_legacy_fundamentals_become_available_next_trading_day(self):
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dates = pd.bdate_range("2024-05-01", periods=10)
+            pd.DataFrame(
+                [
+                    {
+                        "date": "2024-03-31",
+                        "acceptedDate": "2024-05-03T12:00:00",
+                        "earningsYieldTTM": 0.1,
+                    }
+                ]
+            ).to_parquet(tmp_path / "fundamentals_AAA.parquet", index=False)
+            panels = prepare.DataStore._load_legacy_fundamentals(tmp_path, dates)
+            series = panels["earnings_yield"]["AAA"]
+            self.assertTrue(pd.isna(series.loc[pd.Timestamp("2024-05-03")]))
+            self.assertAlmostEqual(float(series.loc[pd.Timestamp("2024-05-06")]), 0.1)
+
+    def test_raw_fundamentals_have_staleness_cutoff(self):
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dates = pd.bdate_range("2024-01-01", periods=400)
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "AAA",
+                        "date": "2024-03-31",
+                        "filingDate": "2024-05-01",
+                        "acceptedDate": "2024-05-01T12:00:00",
+                        "netIncome_x": 100.0,
+                        "totalStockholdersEquity": 500.0,
+                    }
+                ]
+            ).to_parquet(tmp_path / "statements_AAA.parquet", index=False)
+            panels = prepare.DataStore._load_raw_fundamentals(tmp_path, dates, dates)
+            series = panels["net_income"]["AAA"]
+            self.assertAlmostEqual(float(series.dropna().iloc[0]), 100.0)
+            self.assertTrue(pd.isna(series.iloc[-1]))
+
     def test_tradable_universe_uses_observation_count_not_consecutive_rows(self):
         dates = pd.bdate_range("2023-01-02", periods=300)
         a_series = pd.Series(np.nan, index=dates, dtype=float)
@@ -498,6 +537,34 @@ class PrepareTests(unittest.TestCase):
         limited = prepare.DateLimitedStore(store, date)
         scores = strategy.signals(limited, date)
         self.assertGreater(len(scores), 0)
+
+    def test_derived_factor_combines_raw_and_legacy_coverage(self):
+        dates = pd.bdate_range("2024-01-01", periods=260)
+        prices = pd.DataFrame({"RAW": 10.0, "LEG": 20.0}, index=dates)
+        legacy_roe = pd.DataFrame({"LEG": [0.2]}, index=[dates[-1]])
+        store = prepare.DataStore(
+            signal_prices=prices,
+            total_return_prices=prices,
+            open_prices=prices,
+            volumes=pd.DataFrame({"RAW": 1_000_000.0, "LEG": 1_000_000.0}, index=dates),
+            market_caps=pd.DataFrame({"RAW": 1000.0, "LEG": 2000.0}, index=dates),
+            raw_fundamental_panels={
+                "net_income": pd.DataFrame({"RAW": [100.0]}, index=[dates[-1]]),
+                "book_equity": pd.DataFrame({"RAW": [500.0]}, index=[dates[-1]]),
+            },
+            legacy_fundamentals={"roe": legacy_roe},
+            macro_vintage_table=pd.DataFrame(),
+            market_macro={},
+            metadata={
+                "RAW": {"country": "US", "sector": "Tech", "exchange": "NASDAQ", "listing_start_date": dates[0], "listing_end_date": dates[-1]},
+                "LEG": {"country": "US", "sector": "Tech", "exchange": "NASDAQ", "listing_start_date": dates[0], "listing_end_date": dates[-1]},
+            },
+            sp500_membership={},
+            cache_dir=prepare.CACHE_DIR,
+        )
+        vals = store.latest_fundamental("roe", dates[-1])
+        self.assertIn("RAW", vals.index)
+        self.assertIn("LEG", vals.index)
 
 
 if __name__ == "__main__":

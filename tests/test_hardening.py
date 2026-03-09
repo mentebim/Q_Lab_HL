@@ -87,6 +87,22 @@ class HardeningTests(unittest.TestCase):
         self.assertAlmostEqual(float(risked.sum()), 1.0, places=6)
         self.assertGreaterEqual(float(risked["__CASH__"]), -1e-9)
 
+    def test_strategy_risk_enforces_sector_cap_after_normalization(self):
+        data = FakeStrategyData()
+        tickers = list(data.price_frame.columns[:20])
+        for ticker in tickers[:10]:
+            data.sectors[ticker] = "Tech"
+        for ticker in tickers[10:]:
+            data.sectors[ticker] = "Health"
+        weights = pd.Series({ticker: 1.0 / len(tickers) for ticker in tickers})
+        weights["__CASH__"] = 0.0
+        risked = strategy.risk(weights, data, data.dates[-1])
+        for sector in {"Tech", "Health"}:
+            sector_weight = float(
+                risked[[ticker for ticker in tickers if data.sector(ticker) == sector]].sum()
+            )
+            self.assertLessEqual(sector_weight, strategy.MAX_SECTOR_WEIGHT + 1e-6)
+
     def test_normalize_target_weights_rejects_negative_cash(self):
         with self.assertRaises(ValueError):
             prepare.normalize_target_weights(pd.Series({"AAA": 1.2, "__CASH__": -0.2}))
@@ -138,6 +154,47 @@ class HardeningTests(unittest.TestCase):
         result = prepare.run_backtest(module, store, str(dates[0].date()), str(dates[-1].date()))
         self.assertAlmostEqual(float(result.daily_returns.iloc[1]), -0.002, places=9)
         self.assertAlmostEqual(float(result.daily_returns.iloc[2]), 0.10, places=6)
+
+    def test_run_backtest_resets_strategy_state(self):
+        calls = []
+
+        class StatefulModule:
+            REBALANCE_FREQ = "M"
+
+            @staticmethod
+            def reset_state():
+                calls.append("reset")
+
+            @staticmethod
+            def signals(data, date):
+                return pd.Series({"AAA": 1.0})
+
+            @staticmethod
+            def construct(scores, data, date):
+                return pd.Series({"AAA": 1.0})
+
+            @staticmethod
+            def risk(weights, data, date):
+                return pd.Series({"AAA": 1.0})
+
+        dates = pd.bdate_range("2024-01-02", periods=5)
+        prices = pd.DataFrame({"AAA": [100.0, 101.0, 102.0, 103.0, 104.0]}, index=dates)
+        store = prepare.DataStore(
+            signal_prices=prices,
+            total_return_prices=prices,
+            open_prices=prices,
+            volumes=pd.DataFrame({"AAA": [1_000_000] * 5}, index=dates),
+            market_caps=pd.DataFrame({"AAA": [1_000_000_000] * 5}, index=dates),
+            raw_fundamental_panels={},
+            legacy_fundamentals={},
+            macro_vintage_table=pd.DataFrame(),
+            market_macro={},
+            metadata={"AAA": {"country": "US", "sector": "Tech", "exchange": "NASDAQ", "listing_start_date": dates[0], "listing_end_date": dates[-1]}},
+            sp500_membership={},
+        )
+        prepare.run_backtest(StatefulModule, store, str(dates[0].date()), str(dates[-1].date()))
+        prepare.run_backtest(StatefulModule, store, str(dates[0].date()), str(dates[-1].date()))
+        self.assertEqual(calls, ["reset", "reset"])
 
 
 if __name__ == "__main__":

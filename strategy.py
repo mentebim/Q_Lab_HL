@@ -17,12 +17,23 @@ _PREV_SELECTION: list[str] = []
 _PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
 
 
+def reset_state():
+    global _PREV_SELECTION, _PREV_TARGET_WEIGHTS
+    _PREV_SELECTION = []
+    _PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
+
+
 def _safe_rank(data, series: pd.Series) -> pd.Series:
     series = pd.Series(series).replace([np.inf, -np.inf], np.nan).dropna()
     if series.empty:
         return pd.Series(dtype=float)
     series = data.winsorize_cross_section(series, lower_pct=0.05, upper_pct=0.95)
     return data.factor_rank(series)
+
+
+def _neutral_rank(data, series: pd.Series, universe: list[str]) -> pd.Series:
+    ranked = _safe_rank(data, series).reindex(universe)
+    return ranked.fillna(0.5)
 
 
 def _latest_or_neutral(data, field: str, date, universe: list[str]) -> pd.Series:
@@ -99,15 +110,16 @@ def signals(data, date):
 
     ranks = pd.concat(
         [
-            _safe_rank(data, momentum).rename("momentum"),
-            _safe_rank(data, quality).rename("quality"),
-            _safe_rank(
+            _neutral_rank(data, momentum, universe).rename("momentum"),
+            _neutral_rank(data, quality, universe).rename("quality"),
+            _neutral_rank(
                 data,
                 free_cash_flow_yield.fillna(
                     free_cash_flow_yield.median() if free_cash_flow_yield.notna().any() else 0.0
                 ),
+                universe,
             ).rename("fcf_yield"),
-            _safe_rank(data, low_vol).rename("low_vol"),
+            _neutral_rank(data, low_vol, universe).rename("low_vol"),
         ],
         axis=1,
     )
@@ -117,9 +129,9 @@ def signals(data, date):
         + 0.35 * ranks["quality"]
         + 0.20 * ranks["fcf_yield"]
         + 0.15 * ranks["low_vol"]
-    ).reindex(universe).dropna()
+    ).reindex(universe)
 
-    score = data.neutralize_cross_section(score, by=[sector])
+    score = data.neutralize_cross_section(score.fillna(0.0), by=[sector])
     return score.dropna().sort_values(ascending=False)
 
 
@@ -158,16 +170,36 @@ def risk(weights, data, date):
     for ticker in asset_weights.index:
         sectors.setdefault(data.sector(ticker), []).append(ticker)
 
-    for members in sectors.values():
-        sector_weight = float(asset_weights[members].sum())
-        if sector_weight > MAX_SECTOR_WEIGHT:
-            asset_weights.loc[members] *= MAX_SECTOR_WEIGHT / sector_weight
+    target_total = max(0.0, 1.0 - cash)
+    if float(asset_weights.sum()) > 0:
+        asset_weights = asset_weights / float(asset_weights.sum()) * target_total
 
-    total = float(asset_weights.sum())
-    if total > 0:
-        asset_weights /= total
-        asset_weights *= max(0.0, 1.0 - cash)
+    for _ in range(10):
+        prev = asset_weights.copy()
+        asset_weights = asset_weights.clip(lower=0.0, upper=MAX_POSITION_WEIGHT)
+
+        for members in sectors.values():
+            sector_weight = float(asset_weights[members].sum())
+            if sector_weight > MAX_SECTOR_WEIGHT:
+                asset_weights.loc[members] *= MAX_SECTOR_WEIGHT / sector_weight
+
+        total = float(asset_weights.sum())
+        slack = max(0.0, target_total - total)
+        if slack > 1e-12:
+            eligible = asset_weights[(asset_weights > 0) & (asset_weights < MAX_POSITION_WEIGHT - 1e-12)]
+            eligible = eligible[
+                [
+                    float(asset_weights[sectors[data.sector(ticker)]].sum()) < MAX_SECTOR_WEIGHT - 1e-12
+                    for ticker in eligible.index
+                ]
+            ]
+            if len(eligible):
+                add = eligible / float(eligible.sum()) * slack
+                asset_weights.loc[eligible.index] += add
+
+        if np.allclose(asset_weights.reindex(prev.index).fillna(0.0), prev.fillna(0.0), atol=1e-10):
+            break
 
     final = asset_weights.copy()
-    final.loc["__CASH__"] = 1.0 - float(asset_weights.sum())
+    final.loc["__CASH__"] = max(0.0, 1.0 - float(asset_weights.sum()))
     return final

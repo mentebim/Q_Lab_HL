@@ -31,6 +31,7 @@ from datetime import datetime
 from itertools import combinations
 from pathlib import Path
 from typing import Iterable
+import fcntl
 
 import numpy as np
 import pandas as pd
@@ -85,6 +86,7 @@ AUDIT_SPA_ALPHA = 0.05
 PBO_MIN_FAMILY_SIZE = 8
 BENCHMARK_MAX_DAILY_RETURN = 5.0
 PBO_SLICE_COUNT = 8
+FUNDAMENTAL_STALE_LIMIT = 252
 
 FMP_BASE = "https://financialmodelingprep.com/stable"
 FRED_BASE = "https://api.stlouisfed.org/fred"
@@ -680,14 +682,39 @@ def load_companies_json() -> dict:
 
 
 def _coalesce_metadata_rows(existing: dict, incoming: dict) -> dict:
+    def is_missing(value) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value == ""
+        return bool(pd.isna(value))
+
     merged = dict(existing)
     for key, value in incoming.items():
         if key == "ticker":
             merged[key] = value
             continue
-        if merged.get(key) in (None, "", pd.NaT) and value not in (None, "", pd.NaT):
+        if is_missing(merged.get(key)) and not is_missing(value):
             merged[key] = value
     return merged
+
+
+class FileLock:
+    def __init__(self, path: Path):
+        self.path = path
+        self.handle = None
+
+    def __enter__(self):
+        ensure_cache_dir(self.path.parent)
+        self.handle = open(self.path, "a+")
+        fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self.handle is not None:
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+            self.handle.close()
+        self.handle = None
 
 
 def cache_available_tickers(cache_dir: Path, prefix: str) -> set[str]:
@@ -1114,6 +1141,7 @@ class BacktestResult:
 class AuditFamilyStore:
     def __init__(self, path: Path = AUDIT_RETURNS_FILE):
         self.path = path
+        self.lock_path = path.with_suffix(path.suffix + ".lock")
 
     def load(self) -> pd.DataFrame:
         if self.path.exists():
@@ -1121,18 +1149,19 @@ class AuditFamilyStore:
         return pd.DataFrame(columns=["candidate_id", "date", "active_return"])
 
     def upsert(self, candidate_id: str, returns: pd.Series) -> None:
-        ensure_cache_dir(self.path.parent)
-        existing = self.load()
-        existing = existing[existing["candidate_id"] != candidate_id]
-        append = pd.DataFrame(
-            {
-                "candidate_id": candidate_id,
-                "date": pd.to_datetime(returns.index),
-                "active_return": returns.values,
-            }
-        )
-        combined = pd.concat([existing, append], ignore_index=True)
-        combined.to_parquet(self.path, index=False)
+        with FileLock(self.lock_path):
+            ensure_cache_dir(self.path.parent)
+            existing = self.load()
+            existing = existing[existing["candidate_id"] != candidate_id]
+            append = pd.DataFrame(
+                {
+                    "candidate_id": candidate_id,
+                    "date": pd.to_datetime(returns.index),
+                    "active_return": returns.values,
+                }
+            )
+            combined = pd.concat([existing, append], ignore_index=True)
+            combined.to_parquet(self.path, index=False)
 
     def matrix(self) -> pd.DataFrame:
         data = self.load()
@@ -1165,6 +1194,7 @@ class AuditRegistryStore:
 
     def __init__(self, path: Path = AUDIT_REGISTRY_FILE):
         self.path = path
+        self.lock_path = path.with_suffix(path.suffix + ".lock")
 
     def load(self) -> pd.DataFrame:
         if self.path.exists():
@@ -1176,12 +1206,13 @@ class AuditRegistryStore:
         return pd.DataFrame(columns=self.columns)
 
     def upsert(self, row: dict) -> None:
-        ensure_cache_dir(self.path.parent)
-        existing = self.load()
-        existing = existing[existing["candidate_id"] != row["candidate_id"]]
-        combined = pd.concat([existing, pd.DataFrame([row])], ignore_index=True)
-        combined = combined[self.columns]
-        combined.to_csv(self.path, sep="\t", index=False)
+        with FileLock(self.lock_path):
+            ensure_cache_dir(self.path.parent)
+            existing = self.load()
+            existing = existing[existing["candidate_id"] != row["candidate_id"]]
+            combined = pd.concat([existing, pd.DataFrame([row])], ignore_index=True)
+            combined = combined[self.columns]
+            combined.to_csv(self.path, sep="\t", index=False)
 
 
 class DataStore:
@@ -1392,7 +1423,7 @@ class DataStore:
                 continue
             ticker_df = pd.DataFrame(events).drop_duplicates("first_trade_date", keep="last")
             ticker_df = ticker_df.set_index("first_trade_date").sort_index()
-            ticker_df = ticker_df.reindex(trading_dates).ffill()
+            ticker_df = ticker_df.reindex(trading_dates).ffill(limit=FUNDAMENTAL_STALE_LIMIT)
             for field in list(RAW_STATEMENT_FIELDS) + ["debt"]:
                 if field in ticker_df.columns:
                     panels.setdefault(field, {})[ticker] = ticker_df[field].astype(float)
@@ -1426,6 +1457,9 @@ class DataStore:
                 if avail is None:
                     missing_examples.append(str(pd.Timestamp(row.get("date")).date()))
                     continue
+                avail = next_trading_day(trading_dates, avail)
+                if avail is None:
+                    continue
                 for source, target in LEGACY_RATIO_MAP.items():
                     if source not in row.index:
                         continue
@@ -1449,7 +1483,7 @@ class DataStore:
                 continue
             sparse = pd.DataFrame(sparse_rows)
             pivot = sparse.pivot_table(index="date", columns="ticker", values="value", aggfunc="last")
-            out[field] = pivot.reindex(trading_dates).sort_index().ffill()
+            out[field] = pivot.reindex(trading_dates).sort_index().ffill(limit=FUNDAMENTAL_STALE_LIMIT)
         return out
 
     @staticmethod
@@ -1571,13 +1605,13 @@ class DataStore:
             if ts not in panel.index:
                 return pd.Series(dtype=float)
             return panel.loc[ts].dropna()
+        if field in DERIVED_FUNDAMENTAL_FIELDS:
+            return self._compute_derived_cross_section(field, ts)
         if field in self._legacy_fundamentals:
             panel = self._legacy_fundamentals[field]
             if ts not in panel.index:
                 return pd.Series(dtype=float)
             return panel.loc[ts].dropna()
-        if field in DERIVED_FUNDAMENTAL_FIELDS:
-            return self._compute_derived_cross_section(field, ts)
         raise KeyError(f"Unknown fundamental field '{field}'")
 
     def fundamental(self, field: str) -> pd.DataFrame:
@@ -1784,33 +1818,42 @@ class DataStore:
                 return pd.Series(dtype=float)
             return panel.loc[ts].dropna()
 
+        def combine(raw: pd.Series, legacy: pd.Series) -> pd.Series:
+            if len(raw) and len(legacy):
+                return raw.combine_first(legacy).dropna()
+            if len(raw):
+                return raw.dropna()
+            return legacy.dropna()
+
         if field == "book_to_price":
             book = latest_or_empty("book_equity")
+            raw = pd.Series(dtype=float)
             if len(book):
                 mcap = self.market_cap(ts)
-                return (book / mcap.replace(0, np.nan)).dropna()
+                raw = (book / mcap.replace(0, np.nan)).dropna()
             pb = legacy_or_empty("pb").replace(0, np.nan)
-            if len(pb):
-                return (1.0 / pb).dropna()
-            return pd.Series(dtype=float)
+            legacy = (1.0 / pb).dropna() if len(pb) else pd.Series(dtype=float)
+            return combine(raw, legacy)
         if field == "earnings_yield":
             income = latest_or_empty("net_income")
+            raw = pd.Series(dtype=float)
             if len(income):
                 mcap = self.market_cap(ts)
-                return ((income * 4) / mcap.replace(0, np.nan)).dropna()
-            return legacy_or_empty("earnings_yield")
+                raw = ((income * 4) / mcap.replace(0, np.nan)).dropna()
+            return combine(raw, legacy_or_empty("earnings_yield"))
         if field == "free_cash_flow_yield":
             fcf = latest_or_empty("free_cash_flow")
+            raw = pd.Series(dtype=float)
             if len(fcf):
                 mcap = self.market_cap(ts)
-                return ((fcf * 4) / mcap.replace(0, np.nan)).dropna()
-            return legacy_or_empty("fcf_yield")
+                raw = ((fcf * 4) / mcap.replace(0, np.nan)).dropna()
+            return combine(raw, legacy_or_empty("fcf_yield"))
         if field == "gross_profitability":
             gross = latest_or_empty("gross_profit")
             assets = latest_or_empty("assets")
             if len(gross) and len(assets):
                 return (gross / assets.replace(0, np.nan)).dropna()
-            return legacy_or_empty("gross_margin")
+            return pd.Series(dtype=float)
         if field == "asset_growth":
             panel = self._raw_fundamental_panels.get("assets")
             if panel is not None and ts in panel.index:
@@ -1819,25 +1862,27 @@ class DataStore:
                 if ts in shifted.index:
                     prev = shifted.loc[ts].replace(0, np.nan)
                     return (now / prev - 1).dropna()
-            return legacy_or_empty("revenue_growth")
+            return pd.Series(dtype=float)
         if field == "leverage":
             debt = latest_or_empty("debt")
             assets = latest_or_empty("assets")
             if len(debt) and len(assets):
                 return (debt / assets.replace(0, np.nan)).dropna()
-            return legacy_or_empty("debt_to_equity")
+            return pd.Series(dtype=float)
         if field == "current_ratio":
             assets = latest_or_empty("current_assets")
             liabilities = latest_or_empty("current_liabilities")
+            raw = pd.Series(dtype=float)
             if len(assets) and len(liabilities):
-                return (assets / liabilities.replace(0, np.nan)).dropna()
-            return legacy_or_empty("current_ratio")
+                raw = (assets / liabilities.replace(0, np.nan)).dropna()
+            return combine(raw, legacy_or_empty("current_ratio"))
         if field == "roe":
             income = latest_or_empty("net_income")
             equity = latest_or_empty("book_equity")
+            raw = pd.Series(dtype=float)
             if len(income) and len(equity):
-                return ((income * 4) / equity.replace(0, np.nan)).dropna()
-            return legacy_or_empty("roe")
+                raw = ((income * 4) / equity.replace(0, np.nan)).dropna()
+            return combine(raw, legacy_or_empty("roe"))
         raise KeyError(f"Unknown derived field '{field}'")
 
 
@@ -2017,6 +2062,14 @@ def choose_benchmark_returns(store: DataStore, dates: pd.DatetimeIndex) -> tuple
 
 
 def run_backtest(strategy_module, data_store: DataStore, start: str, end: str, rebalance_freq: str = "M") -> BacktestResult:
+    if hasattr(strategy_module, "reset_state") and callable(strategy_module.reset_state):
+        strategy_module.reset_state()
+    else:
+        if hasattr(strategy_module, "_PREV_SELECTION"):
+            strategy_module._PREV_SELECTION = []
+        if hasattr(strategy_module, "_PREV_TARGET_WEIGHTS"):
+            strategy_module._PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
+
     freq = getattr(strategy_module, "REBALANCE_FREQ", rebalance_freq)
     lead_start = pd.Timestamp(start) - pd.DateOffset(months=14)
     total_return_prices = data_store.prices_total_return(start=str(lead_start.date()), end=end)
