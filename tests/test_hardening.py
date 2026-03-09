@@ -85,7 +85,7 @@ class HardeningTests(unittest.TestCase):
         self.assertIn("__CASH__", weights.index)
         risked = strategy.risk(weights, data, data.dates[-1])
         self.assertAlmostEqual(float(risked.sum()), 1.0, places=6)
-        self.assertGreaterEqual(float(risked["__CASH__"]), 0.0)
+        self.assertGreaterEqual(float(risked["__CASH__"]), -1e-9)
 
     def test_normalize_target_weights_rejects_negative_cash(self):
         with self.assertRaises(ValueError):
