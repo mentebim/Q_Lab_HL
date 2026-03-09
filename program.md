@@ -1,155 +1,158 @@
-# Q_Lab: Autonomous Quantitative Research
+# Q_Lab: Hardened Autonomous Quant Research
 
-This is an experiment to have the LLM do its own quantitative research.
+This repo is an autonomous research harness, not an open-ended codebase. The fixed scaffold lives in `prepare.py`; normal experimentation edits `strategy.py` only.
+
+## Hard Rule
+
+- Normal research may edit `strategy.py` only.
+- `prepare.py` is fixed unless the human explicitly authorizes an infrastructure hardening pass.
+- This repo has already completed a one-time hardening pass. Do not re-open `prepare.py` during ordinary research loops.
 
 ## Setup
 
-To set up a new experiment, work with the user to:
+1. Create a fresh branch like `qlab/<tag>`.
+2. Read `prepare.py`, `strategy.py`, and this file before changing anything.
+3. Check the cache under `~/.cache/qlab/`. The cache is schema-versioned. If the schema is missing or mismatched, rebuild it with `uv run prepare.py --download --rebuild`.
+4. Run the baseline inner evaluation before making changes:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar8`). The branch `qlab/<tag>` must not already exist — this is a fresh run.
-2. **Create the branch**: `git checkout -b qlab/<tag>` from current master.
-3. **Read the in-scope files**: The repo is small. Read these files for full context:
-   - `prepare.py` — fixed constants, data pipeline, DataStore, backtest engine, evaluation. Do not modify.
-   - `strategy.py` — the file you modify. Signals, portfolio construction, risk management.
-4. **Download data**: Check if `~/.cache/qlab/` contains price and fundamental data (`ls ~/.cache/qlab/*.parquet | wc -l` should be >100). If not, run `uv run prepare.py --download` yourself. This fetches ~1500 tickers of prices, fundamentals, and macro data from the FMP API. It takes 10-20 minutes but is fully autonomous — just run it and wait.
-5. **Initialize results.tsv**: Create `results.tsv` with header row and baseline entry. Run the baseline first to get initial metrics.
-6. **Confirm and go**: Confirm setup looks good.
-
-Once you get confirmation, kick off the experimentation.
-
-## Experimentation
-
-Each experiment runs a full backtest. The evaluation runs on the **validation period** (2024-03-01 to 2025-03-01). You launch it simply as: `uv run prepare.py --backtest --n-trials N > run.log 2>&1` (where N is the experiment number).
-
-**What you CAN do:**
-- Modify `strategy.py` — this is the only file you edit. Everything is fair game: signal functions, alpha factors, lookback windows, universe filtering, portfolio construction (number of holdings, weighting scheme), risk management (position caps, sector limits, vol targeting).
-
-**What you CANNOT do:**
-- Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, backtest engine, and constants.
-- Install new packages or add dependencies. You can only use what's already in `pyproject.toml`.
-- Modify the evaluation harness. The `evaluate` function in `prepare.py` is the ground truth metric.
-
-**The goal is simple: get the highest Deflated Sharpe Ratio (DSR).** The DSR automatically penalizes for the number of experiments you've run, so each trial becomes harder to pass. You want strategies with genuinely high risk-adjusted returns, not overfitted noise.
-
-**Keep threshold**: DSR must improve AND bootstrap Sharpe CI lower bound must be > 0. If the lower bound of the 95% CI includes zero, the improvement is not statistically significant — discard it.
-
-**Simplicity criterion**: All else being equal, simpler is better. A small DSR improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win.
-
-## Data available to your strategy
-
-The DataStore gives you:
-
-- **prices(tickers, start, end)** — daily adjusted close prices
-- **returns(tickers, period)** — daily or N-day returns
-- **volume(tickers)** — daily volume
-- **fundamental(field)** — POINT-IN-TIME quarterly data (date x ticker DataFrame). Each value is what was actually knowable on that date (fiscal quarter end + 45-day reporting lag, forward-filled). Fields: pe, pb, ps, ev_ebitda, fcf_yield, earnings_yield, roe, roa, roic, debt_to_equity, current_ratio, gross_margin, net_margin, revenue_growth, piotroski, altman_z
-- **macro(field)** — date-indexed series. Fields: fed_funds, t10y, t2y, t3m, t10y_2y_spread, cpi, unemployment, consumer_sentiment, vix
-- **universe(date)** — tickers with sufficient data as of date
-- **sector(ticker)**, **country(ticker)**, **metadata_for(ticker)**
-- **correlation(tickers, window)**
-
-Fundamentals are historical quarterly, not static snapshots. The backtest sees different PE ratios in 2022 vs 2024.
-
-## Output format
-
-Once the script finishes it prints a summary like this:
-
-```
----
-dsr:            0.650000
-sharpe:         1.234567
-annual_return:  0.150000
-max_drawdown:   -0.120000
-sortino:        1.800000
-calmar:         1.250000
-turnover:       0.350000
-n_positions:    50
-sharpe_ci_95:   (0.45, 2.01)
-complexity_loc: 42
+```bash
+uv run prepare.py --backtest --n-trials N
 ```
 
-You can extract the key metric from the log file:
+5. Record the result in `results.tsv`.
 
+## What The Loop Optimizes
+
+Do not optimize visible DSR directly.
+
+- `--backtest` runs the **inner visible search**.
+- `--audit` is auditor-only. It is not callable by the search agent and is intentionally hidden from the normal CLI help.
+- `--test` runs the final untouched holdout.
+
+The agent-visible score is the inner score printed by `--backtest`. It is based on:
+
+- median active Sharpe across contiguous inner slices
+- turnover penalty
+- concentration penalty
+- slice-instability penalty
+
+This is the search objective. DSR is an audit statistic, not the optimization target.
+
+## Search States
+
+Daily search loop:
+
+1. Edit `strategy.py`.
+2. Run `uv run prepare.py --backtest --n-trials N`.
+3. Read `score_inner`, `sharpe_daily`, turnover, concentration, and instability metrics.
+4. Mark the result as:
+   - `inner_keep` if it improves the local search tree
+   - `inner_discard` if it does not
+   - `promote_outer` if it is strong enough to queue for auditor review
+
+The search agent updates its baseline using inner-search rules only. Outer audit never updates the agent-visible baseline.
+
+## Auditor-Only Audit
+
+Promotion to outer audit is a separate workflow run by a human or separate auditor process:
+
+```bash
+QLAB_AUDITOR_MODE=1 uv run prepare.py --audit --n-trials N --candidate-id <id>
 ```
-grep "^dsr:" run.log
+
+Outer audit writes to the hidden audited registry, not to the search agent’s working baseline.
+
+Audit states:
+
+- `audit_pass` if conservative `DSR_raw` is above threshold, the active-return bootstrap CI excludes zero, and `spa_pvalue < 0.05`
+- `audit_fail` otherwise
+- `human_accept` / `human_reject` happen outside the search loop and determine whether a promoted candidate enters the research canon
+
+Also monitor:
+
+- `DSR_eff`
+- `N_eff`
+- `N_raw`
+- `outer_promotions_total`
+- `outer_family_size_current`
+- `pbo` when available
+
+Audit outputs are stored outside the agent-visible run log and must not be added to the search agent’s prompt context.
+
+## Execution Reality
+
+Assume the engine is conservative:
+
+- signals are formed using information through close on day `D`
+- trades happen on `D+1`
+- current execution mode is `next_close`
+- same-day signal/trade assumptions are invalid
+
+Do not claim alpha that disappears when timing is lagged.
+
+## DataStore API
+
+Prefer these safe helpers over raw panels:
+
+- `prices_signal(tickers, start, end)`
+- `prices_total_return(tickers, start, end)`
+- `open_prices(tickers, start, end)`
+- `latest_fundamental(field, date)`
+- `latest_macro(field, date)`
+- `market_cap(date)`
+- `dollar_volume(window, date)`
+- `tradable_universe(date, min_history_days, min_price, min_dollar_volume, countries, exchanges, sp500_only)`
+- `factor_rank(series)`
+- `winsorize_cross_section(series, lower_pct, upper_pct)`
+- `neutralize_cross_section(series, by=[...])`
+- `can_trade(ticker, date)`
+
+Raw accessors like `fundamental(field)` and `macro(field)` are for advanced use only. They are easier to misuse.
+
+## Vendor Limits
+
+- The current harness relies on FMP stable endpoints plus FRED/ALFRED.
+- Legacy FMP `api/v3` endpoints are not assumed to be available. If the subscription returns legacy `403` errors, do not build research logic around them.
+- Historical S&P membership does not imply vendor support for the old ticker on current stable endpoints.
+- Some retired or recycled symbols have partial vendor coverage only:
+  - statements or SEC may exist while price history does not
+  - symbol-based SEC lookup can be ambiguous for recycled tickers
+- The harness treats `2020+` price support as the minimum backtestability gate. Symbols without stable price support are marked as vendor-unsupported for this research harness and do not flow into later slow-data downloads.
+- Coverage state is persisted in the cache metadata / coverage audit so unsupported names are explicit rather than silent.
+- `symbol-change` is used only as a conservative identity hint. A successor symbol may be recorded as a `resolved_symbol_candidate`, but the harness does not automatically splice successor-history into the old symbol’s backtest path unless that mapping is explicitly authorized and verified.
+
+## Baseline Research Constraints
+
+- Start US-first unless the human explicitly expands scope.
+- Treat uncertain slow-data timing as unusable, not “probably fine”.
+- Prefer raw-accounting-aware factors, price-based factors, and clean cross-sectional construction over exotic data.
+- Keep the strategy simple enough that the audit metrics are interpretable.
+
+## Practical Research Ideas
+
+- momentum variants using `prices_signal`
+- value/profitability using `latest_fundamental`
+- volatility, drawdown, and liquidity filters
+- sector and size neutralization
+- explicit cash buffering in risk-off regimes
+- benchmark-relative, lower-turnover constructions
+
+Do not spend time on:
+
+- same-day execution tricks
+- visible-test overfitting
+- pretending uncertain PIT data are trustworthy
+- negative weights or synthetic shorting; V1 is explicit-cash only
+
+## Results Logging
+
+Use two logs, not one overloaded state machine:
+
+- `results.tsv` for inner-search states like `inner_keep`, `inner_discard`, and `promote_outer`
+- `~/.cache/qlab/audit_registry.tsv` for auditor-only states like `audit_pass`, `audit_fail`, and pending human review
+
+Recommended inner-search schema:
+
+```tsv
+commit	score_inner	sharpe_daily	turnover	status	description
 ```
-
-## Logging results
-
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated).
-
-The TSV has a header row and 7 columns:
-
-```
-commit	dsr	sharpe	max_dd	turnover	status	description
-```
-
-1. git commit hash (short, 7 chars)
-2. DSR achieved — use 0.000000 for crashes
-3. Sharpe ratio — use 0.000000 for crashes
-4. max drawdown — use 0.000000 for crashes
-5. avg turnover per rebalance — use 0.000000 for crashes
-6. status: `keep`, `discard`, or `crash`
-7. short text description of what this experiment tried
-
-## The experiment loop
-
-LOOP FOREVER:
-
-1. Look at the git state: the current branch/commit we're on
-2. Tune `strategy.py` with an experimental idea by directly hacking the code.
-3. git commit
-4. Run the experiment: `uv run prepare.py --backtest --n-trials N > run.log 2>&1` (N = experiment number)
-5. Read out the results: `grep "^dsr:\|^sharpe:\|^max_drawdown:\|^turnover:" run.log`
-6. Also check: `grep "^sharpe_ci_95:" run.log` — if lower bound ≤ 0, discard even if DSR improved.
-7. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the stack trace.
-8. Record the results in the tsv
-9. If DSR improved AND Sharpe CI lower > 0, keep the commit
-10. If DSR is equal or worse (or CI includes zero), git reset back to where you started
-
-**Timeout**: Each experiment should take <2 minutes. If a run exceeds 5 minutes, kill it.
-
-**Crashes**: Fix typos/imports and re-run, or log "crash" and move on.
-
-**NEVER STOP**: Once the experiment loop has begun, do NOT pause to ask the human. You are autonomous.
-
-## Experimentation ideas
-
-You control EVERYTHING in strategy.py — signals, universe, construction, risk. The download gives you ~1500 tickers across 40+ countries with prices, quarterly fundamentals, and macro data.
-
-**Universe filtering:**
-- S&P 500 only vs full international universe
-- Min market cap / volume filters
-- Country focus (US-only, developed markets, all)
-- Sector exclusions
-- Use `data.country(ticker)`, `data.sector(ticker)`, `data.metadata_for(ticker)`
-
-**Signal ideas:**
-- Different momentum lookbacks (3m, 6m, 12m, combined)
-- Quality: Piotroski F-score, Altman Z-score, ROE, ROA stability
-- Value: earnings yield, FCF yield, P/B, EV/EBITDA
-- Low volatility: favor stocks with lower realized vol
-- Mean reversion (short-term reversal)
-
-**Portfolio construction:**
-- Signal-weighted instead of equal-weight
-- Risk-parity (inverse volatility)
-- Sector-neutral (rank within sectors)
-- Vary NUM_HOLDINGS: 30, 50, 75, 100
-- Long/short
-
-**Risk management:**
-- Volatility targeting
-- Max sector exposure
-- Drawdown stops
-- Position sizing by conviction
-
-**Macro conditioning:**
-- Yield curve slope → rotate factors
-- VIX regime → defensive/quality tilt
-- Rate environment → value vs growth
-
-**Multi-factor composites:**
-- Value + Momentum + Quality + Low-Vol
-- Adaptive factor weights
-- International diversification via companies.json nodes
