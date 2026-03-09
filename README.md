@@ -111,7 +111,8 @@ The outer audit reports:
 - `DSR_eff`
 - `DSR_raw`
 - active-return bootstrap CI
-- `spa_pvalue`
+- candidate-level `spa_pvalue`
+- `spa_family_pvalue`
 - `audit_state`
 
 Outer audit should be run only on strong inner candidates. Audit outputs are not part of the ordinary search loop.

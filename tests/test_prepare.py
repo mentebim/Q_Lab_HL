@@ -142,6 +142,29 @@ class PrepareTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 prepare.DataStore._load_legacy_fundamentals(tmp_path, dates)
 
+    def test_raw_fundamental_loader_accepts_netincome_suffix_columns(self):
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dates = pd.bdate_range("2024-01-01", periods=260)
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "AAA",
+                        "date": "2024-03-31",
+                        "filingDate": "2024-05-01",
+                        "acceptedDate": "2024-05-01T12:00:00",
+                        "netIncome_x": 100.0,
+                        "totalStockholdersEquity": 500.0,
+                        "freeCashFlow": 50.0,
+                        "grossProfit": 25.0,
+                        "totalAssets": 1000.0,
+                    }
+                ]
+            ).to_parquet(tmp_path / "statements_AAA.parquet", index=False)
+            panels = prepare.DataStore._load_raw_fundamentals(tmp_path, dates, dates)
+            self.assertIn("net_income", panels)
+            self.assertTrue(panels["net_income"]["AAA"].dropna().iloc[-1] == 100.0)
+
     def test_tradable_universe_uses_observation_count_not_consecutive_rows(self):
         dates = pd.bdate_range("2023-01-02", periods=300)
         a_series = pd.Series(np.nan, index=dates, dtype=float)
@@ -417,6 +440,57 @@ class PrepareTests(unittest.TestCase):
         self.assertAlmostEqual(float(result.daily_returns.iloc[1]), -0.002, places=6)
         curve_from_returns = (1 + result.daily_returns).cumprod() * prepare.INITIAL_CAPITAL
         self.assertAlmostEqual(float(curve_from_returns.iloc[-1]), float(result.equity_curve.iloc[-1]), places=6)
+
+    def test_choose_benchmark_returns_filters_extreme_daily_outliers(self):
+        dates = pd.bdate_range("2023-01-02", periods=260)
+        stable_a = pd.Series(10.0, index=dates)
+        stable_b = pd.Series(20.0, index=dates)
+        stable_a.iloc[-1] = 10.1
+        stable_b.iloc[-1] = 20.2
+        junk = pd.Series(1.0, index=dates)
+        junk.iloc[-1] = 1_000_000.0
+        volumes = pd.DataFrame(
+            {"A": 1_000_000.0, "B": 1_000_000.0, "JUNK": 1_000_000.0},
+            index=dates,
+        )
+        metadata = {
+            "A": {"country": "US", "sector": "Tech", "exchange": "NASDAQ", "listing_start_date": dates[0], "listing_end_date": dates[-1]},
+            "B": {"country": "US", "sector": "Health", "exchange": "NYSE", "listing_start_date": dates[0], "listing_end_date": dates[-1]},
+            "JUNK": {"country": "US", "sector": "Tech", "exchange": "NASDAQ", "listing_start_date": dates[0], "listing_end_date": dates[-1]},
+        }
+        store = prepare.DataStore(
+            signal_prices=pd.DataFrame({"A": stable_a, "B": stable_b, "JUNK": junk}),
+            total_return_prices=pd.DataFrame({"A": stable_a, "B": stable_b, "JUNK": junk}),
+            open_prices=pd.DataFrame({"A": stable_a, "B": stable_b, "JUNK": junk}),
+            volumes=volumes,
+            market_caps=pd.DataFrame(index=dates),
+            raw_fundamental_panels={},
+            legacy_fundamentals={},
+            macro_vintage_table=pd.DataFrame(),
+            market_macro={},
+            metadata=metadata,
+            sp500_membership={},
+            cache_dir=prepare.CACHE_DIR,
+        )
+
+        name, bench = prepare.choose_benchmark_returns(store, dates[-5:])
+        self.assertEqual(name, "equal_weight_tradable_universe")
+        self.assertLess(float(bench.iloc[-1]), 0.02)
+        self.assertGreater(float(bench.iloc[-1]), 0.005)
+
+    def test_spa_pvalue_can_target_current_candidate(self):
+        rng = np.random.default_rng(7)
+        dates = pd.bdate_range("2024-01-01", periods=120)
+        strong = pd.Series(0.004 + rng.normal(0.0, 0.006, len(dates)), index=dates)
+        weak = pd.Series(rng.normal(0.0, 0.006, len(dates)), index=dates)
+        matrix = pd.DataFrame({"strong": strong, "weak": weak})
+
+        family_p = prepare.spa_pvalue(matrix, seed=11, n_bootstrap=200)
+        strong_p = prepare.spa_pvalue(matrix, seed=11, n_bootstrap=200, target_column="strong")
+        weak_p = prepare.spa_pvalue(matrix, seed=11, n_bootstrap=200, target_column="weak")
+
+        self.assertLess(strong_p, weak_p)
+        self.assertLessEqual(strong_p, family_p + 0.10)
 
     def test_strategy_signals_survive_missing_fundamentals(self):
         store = make_store()

@@ -21,6 +21,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -82,6 +83,7 @@ EXECUTION_MODE = "next_close"
 AUDIT_DSR_THRESHOLD = 0.95
 AUDIT_SPA_ALPHA = 0.05
 PBO_MIN_FAMILY_SIZE = 8
+BENCHMARK_MAX_DAILY_RETURN = 5.0
 PBO_SLICE_COUNT = 8
 
 FMP_BASE = "https://financialmodelingprep.com/stable"
@@ -310,6 +312,13 @@ def annual_return(returns: pd.Series) -> float:
     return float(total ** (1 / years) - 1)
 
 
+def annualized_mean_return(returns: pd.Series, periods_per_year: int = 252) -> float:
+    rets = pd.Series(returns).dropna()
+    if len(rets) == 0:
+        return 0.0
+    return float(rets.mean() * periods_per_year)
+
+
 def max_drawdown(returns: pd.Series) -> float:
     rets = pd.Series(returns).fillna(0.0)
     if len(rets) == 0:
@@ -464,7 +473,12 @@ def bootstrap_sharpe_ci(
     return (sr_hat - q_low * se_hat, sr_hat - q_high * se_hat, block_length, se_hat)
 
 
-def spa_pvalue(active_return_matrix: pd.DataFrame, seed: int = 17, n_bootstrap: int = 500) -> float:
+def spa_pvalue(
+    active_return_matrix: pd.DataFrame,
+    seed: int = 17,
+    n_bootstrap: int = 500,
+    target_column: str | None = None,
+) -> float:
     matrix = active_return_matrix.dropna(how="all")
     if matrix.empty:
         return 1.0
@@ -472,10 +486,16 @@ def spa_pvalue(active_return_matrix: pd.DataFrame, seed: int = 17, n_bootstrap: 
     t_count = len(matrix)
     if t_count < 12 or matrix.shape[1] == 0:
         return 1.0
+    if target_column is not None and target_column not in matrix.columns:
+        return 1.0
 
     means = matrix.mean()
     stds = matrix.std(ddof=1).replace(0, np.nan)
-    observed = float(np.nanmax(np.sqrt(t_count) * means / stds))
+    observed_stats = np.sqrt(t_count) * means / stds
+    if target_column is None:
+        observed = float(np.nanmax(observed_stats))
+    else:
+        observed = safe_float(observed_stats.get(target_column), default=np.nan)
     if not np.isfinite(observed):
         return 1.0
 
@@ -489,9 +509,12 @@ def spa_pvalue(active_return_matrix: pd.DataFrame, seed: int = 17, n_bootstrap: 
         sample_means = sample.mean()
         sample_stds = sample.std(ddof=1).replace(0, np.nan)
         sample_stat = np.sqrt(t_count) * sample_means / sample_stds
-        if not np.isfinite(sample_stat).any():
-            continue
-        stat = np.nanmax(sample_stat)
+        if target_column is None:
+            if not np.isfinite(sample_stat).any():
+                continue
+            stat = np.nanmax(sample_stat)
+        else:
+            stat = safe_float(sample_stat.get(target_column), default=np.nan)
         if np.isfinite(stat):
             bootstrap_stats.append(float(stat))
     if not bootstrap_stats:
@@ -1134,6 +1157,7 @@ class AuditRegistryStore:
         "DSR_eff",
         "DSR_raw",
         "spa_pvalue",
+        "spa_family_pvalue",
         "N_eff",
         "N_raw",
         "inner_mutations_total",
@@ -1144,7 +1168,11 @@ class AuditRegistryStore:
 
     def load(self) -> pd.DataFrame:
         if self.path.exists():
-            return pd.read_csv(self.path, sep="\t")
+            df = pd.read_csv(self.path, sep="\t")
+            for column in self.columns:
+                if column not in df.columns:
+                    df[column] = np.nan
+            return df[self.columns]
         return pd.DataFrame(columns=self.columns)
 
     def upsert(self, row: dict) -> None:
@@ -1303,6 +1331,21 @@ class DataStore:
         volume_dates: pd.DatetimeIndex,
         allowed_tickers: set[str] | None = None,
     ) -> dict[str, pd.DataFrame]:
+        def statement_float(row: pd.Series, source: str) -> float:
+            candidates = [source, f"{source}_x", f"{source}_y"]
+            if source == "netIncome":
+                candidates.extend(
+                    [
+                        "bottomLineNetIncome",
+                        "netIncomeFromContinuingOperations",
+                    ]
+                )
+            for candidate in candidates:
+                value = safe_float(row.get(candidate))
+                if np.isfinite(value):
+                    return value
+            return np.nan
+
         panels = {field: {} for field in RAW_STATEMENT_FIELDS}
         for path in sorted(cache.glob("statements_*.parquet")):
             try:
@@ -1333,7 +1376,7 @@ class DataStore:
                 if first_trade is None:
                     continue
                 record = {"first_trade_date": first_trade}
-                record.update({local: safe_float(row.get(source)) for local, source in RAW_STATEMENT_FIELDS.items()})
+                record.update({local: statement_float(row, source) for local, source in RAW_STATEMENT_FIELDS.items()})
                 debt = safe_float(row.get("totalDebt"))
                 if np.isnan(debt):
                     debt = safe_float(row.get("longTermDebt")) + safe_float(row.get("shortTermDebt"))
@@ -1949,8 +1992,28 @@ def choose_benchmark_returns(store: DataStore, dates: pd.DatetimeIndex) -> tuple
         bench_rets = bench_prices[DEFAULT_BENCHMARK].pct_change().reindex(dates).fillna(0.0)
         return DEFAULT_BENCHMARK, bench_rets
     eq_prices = store.prices_total_return(start=start, end=end)
-    bench_rets = eq_prices.pct_change().mean(axis=1).reindex(dates).fillna(0.0)
-    return "equal_weight_universe", bench_rets
+    eq_returns = eq_prices.pct_change()
+    benchmark_rows = []
+    for date in dates:
+        universe = store.tradable_universe(
+            date,
+            min_history_days=DEFAULT_MIN_HISTORY_DAYS,
+            min_price=DEFAULT_MIN_PRICE,
+            min_dollar_volume=DEFAULT_MIN_DOLLAR_VOLUME,
+            countries=DEFAULT_COUNTRIES,
+            exchanges=US_PRIMARY_EXCHANGES,
+        )
+        if not universe or date not in eq_returns.index:
+            benchmark_rows.append(0.0)
+            continue
+        day = eq_returns.loc[date].reindex(universe).replace([np.inf, -np.inf], np.nan).dropna()
+        if day.empty:
+            benchmark_rows.append(0.0)
+            continue
+        day = day[(day > -0.95) & (day < BENCHMARK_MAX_DAILY_RETURN)]
+        benchmark_rows.append(float(day.mean()) if not day.empty else 0.0)
+    bench_rets = pd.Series(benchmark_rows, index=dates, dtype=float)
+    return "equal_weight_tradable_universe", bench_rets
 
 
 def run_backtest(strategy_module, data_store: DataStore, start: str, end: str, rebalance_freq: str = "M") -> BacktestResult:
@@ -2116,6 +2179,7 @@ def inner_objective(active_returns: pd.Series, result: BacktestResult) -> tuple[
 def summarize_trial_family(
     family_matrix: pd.DataFrame,
     current_returns: pd.Series,
+    candidate_id: str | None = None,
 ) -> dict:
     current = current_returns.dropna()
     if family_matrix.empty or family_matrix.shape[1] == 0:
@@ -2134,6 +2198,7 @@ def summarize_trial_family(
             "sr_star_eff": 0.0,
             "sr_star_raw": 0.0,
             "spa_pvalue": 1.0,
+            "spa_family_pvalue": 1.0,
             "pbo": None,
         }
     trial_sharpes = family_matrix.apply(sharpe_daily, axis=0)
@@ -2156,7 +2221,8 @@ def summarize_trial_family(
         "DSR_raw": dsr_raw,
         "sr_star_eff": sr_star_eff,
         "sr_star_raw": sr_star_raw,
-        "spa_pvalue": spa_pvalue(family_matrix),
+        "spa_pvalue": spa_pvalue(family_matrix, target_column=candidate_id),
+        "spa_family_pvalue": spa_pvalue(family_matrix),
         "pbo": compute_pbo(family_matrix) if n_raw >= PBO_MIN_FAMILY_SIZE else None,
     }
 
@@ -2178,7 +2244,8 @@ def evaluate(
     active_sharpe = sharpe_daily(active_returns)
     active_sharpe_lo = sharpe_annualized_lo(active_returns)
     portfolio_annual = annual_return(result.daily_returns)
-    active_annual = annual_return(active_returns)
+    benchmark_annual = annual_return(benchmark_returns)
+    active_annual = annualized_mean_return(active_returns)
     portfolio_mdd = max_drawdown(result.daily_returns)
     portfolio_sortino = sortino_ratio(result.daily_returns)
     portfolio_calmar = calmar_ratio(result.daily_returns)
@@ -2192,6 +2259,7 @@ def evaluate(
         "portfolio_sharpe_daily": portfolio_sharpe,
         "portfolio_sharpe_annualized_lo": portfolio_sharpe_lo,
         "active_annual_return": active_annual,
+        "benchmark_annual_return": benchmark_annual,
         "portfolio_annual_return": portfolio_annual,
         "portfolio_max_drawdown": portfolio_mdd,
         "portfolio_sortino": portfolio_sortino,
@@ -2232,9 +2300,10 @@ def evaluate(
 
     family_store = AuditFamilyStore()
     if period == "outer" and persist_outer_audit and candidate_id:
+        metrics["candidate_id"] = candidate_id
         family_store.upsert(candidate_id, active_returns)
     family_matrix = family_store.matrix()
-    family_stats = summarize_trial_family(family_matrix, active_returns)
+    family_stats = summarize_trial_family(family_matrix, active_returns, candidate_id=candidate_id)
     metrics.update(family_stats)
     metrics["outer_promotions_total"] = int(family_matrix.shape[1]) if not family_matrix.empty else 0
     metrics["outer_family_size_current"] = metrics["outer_promotions_total"]
@@ -2258,6 +2327,7 @@ def evaluate(
                 "DSR_eff": family_stats["DSR_eff"],
                 "DSR_raw": family_stats["DSR_raw"],
                 "spa_pvalue": family_stats["spa_pvalue"],
+                "spa_family_pvalue": family_stats["spa_family_pvalue"],
                 "N_eff": family_stats["N_eff"],
                 "N_raw": family_stats["N_raw"],
                 "inner_mutations_total": inner_mutations_total,
@@ -2272,12 +2342,14 @@ def print_metrics(metrics: dict, label: str = "") -> None:
     order = [
         "period",
         "benchmark",
+        "candidate_id",
         "score_inner",
         "active_sharpe_daily",
         "active_sharpe_annualized_lo",
         "portfolio_sharpe_daily",
         "portfolio_sharpe_annualized_lo",
         "active_annual_return",
+        "benchmark_annual_return",
         "portfolio_annual_return",
         "portfolio_max_drawdown",
         "portfolio_sortino",
@@ -2299,6 +2371,7 @@ def print_metrics(metrics: dict, label: str = "") -> None:
         "N_eff",
         "N_raw",
         "spa_pvalue",
+        "spa_family_pvalue",
         "pbo",
         "slice_median_active_sharpe",
         "slice_instability_iqr",
@@ -2344,8 +2417,20 @@ def load_strategy():
     return module
 
 
+def git_short_sha() -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return out or "nogit"
+    except Exception:
+        return "nogit"
+
+
 def default_candidate_id() -> str:
-    return f"strategy-{sha1_file('strategy.py')}"
+    return f"{git_short_sha()}-{sha1_file('strategy.py')[:12]}"
 
 
 def main():

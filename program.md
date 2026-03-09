@@ -89,13 +89,14 @@ Outer audit writes to the hidden audited registry, not to the search agent’s w
 
 Audit states:
 
-- `audit_pass` if conservative `DSR_raw` is above threshold, the active-return bootstrap CI excludes zero, and `spa_pvalue < 0.05`
+- `audit_pass` if conservative `DSR_raw` is above threshold, the active-return bootstrap CI excludes zero, and candidate-level `spa_pvalue < 0.05`
 - `audit_fail` otherwise
 - `human_accept` / `human_reject` happen outside the search loop and determine whether a promoted candidate enters the research canon
 
 Also monitor:
 
 - `DSR_eff`
+- `spa_family_pvalue`
 - `N_eff`
 - `N_raw`
 - `outer_promotions_total`

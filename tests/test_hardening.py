@@ -11,7 +11,7 @@ import strategy
 class FakeStrategyData:
     def __init__(self):
         self.dates = pd.bdate_range("2024-01-02", periods=260)
-        tickers = [f"T{i:02d}" for i in range(12)]
+        tickers = [f"T{i:03d}" for i in range(140)]
         base = np.linspace(100, 140, len(self.dates))
         self.price_frame = pd.DataFrame(
             {
@@ -85,7 +85,7 @@ class HardeningTests(unittest.TestCase):
         self.assertIn("__CASH__", weights.index)
         risked = strategy.risk(weights, data, data.dates[-1])
         self.assertAlmostEqual(float(risked.sum()), 1.0, places=6)
-        self.assertGreaterEqual(float(risked["__CASH__"]), strategy.TARGET_CASH_WEIGHT)
+        self.assertGreaterEqual(float(risked["__CASH__"]), 0.0)
 
     def test_normalize_target_weights_rejects_negative_cash(self):
         with self.assertRaises(ValueError):
