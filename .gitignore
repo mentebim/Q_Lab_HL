@@ -15,6 +15,11 @@ wheels/
 # Experiment artifacts
 run.log
 progress.png
+artifacts/
+registries/
+.cache/
+__pycache__/
+data/market_cache_1h/raw/
 
 # Agent prompt files
 CLAUDE.md

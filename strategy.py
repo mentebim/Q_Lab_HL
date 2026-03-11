@@ -1,205 +1,166 @@
-"""Stability-focused long-only strategy for the hardened Q_Lab harness."""
+"""Baseline Hyperliquid long-short residual reversal strategy."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-NUM_HOLDINGS = 100
-REBALANCE_FREQ = "M"
-MIN_DOLLAR_VOLUME = 20_000_000.0
-MAX_POSITION_WEIGHT = 0.020
-MAX_SECTOR_WEIGHT = 0.25
-ENTRY_RANK = NUM_HOLDINGS
-EXIT_RANK = 195
+from q_lab_hl.config import ExecutionConfig
+from q_lab_hl.data import default_universe_kwargs
 
-_PREV_SELECTION: list[str] = []
-_PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
+
+EXECUTION = ExecutionConfig(
+    min_history_bars=24 * 14,
+    min_dollar_volume=500_000.0,
+    min_price=0.10,
+    listing_cooldown_bars=24 * 3,
+)
+MODEL_FAMILY = "residual_reversal"
+POSITION_BUCKET = 4
+LOOKBACK_SHORT_HOURS = 6
+LOOKBACK_MEDIUM_HOURS = 24
+FUNDING_WINDOW_HOURS = 8
+LIQUIDITY_WINDOW_HOURS = 24
+VOL_WINDOW_HOURS = 72
+BETA_WINDOW_HOURS = 72
+MOMENTUM_CONFIRM_WEIGHT = 0.20
+RESIDUAL_WEIGHT = 0.60
+MEDIUM_WEIGHT = 0.20
+FUNDING_WEIGHT = 0.20
+PARAM_GRID = {
+    "MODEL_FAMILY": ["residual_reversal", "funding_dislocation", "beta_neutral_momentum"],
+    "POSITION_BUCKET": [3, 4, 5],
+    "LOOKBACK_SHORT_HOURS": [6, 12],
+    "LOOKBACK_MEDIUM_HOURS": [24, 48],
+    "FUNDING_WINDOW_HOURS": [8],
+    "VOL_WINDOW_HOURS": [48, 72],
+}
 
 
 def reset_state():
-    global _PREV_SELECTION, _PREV_TARGET_WEIGHTS
-    _PREV_SELECTION = []
-    _PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
+    return None
 
 
-def _safe_rank(data, series: pd.Series) -> pd.Series:
-    series = pd.Series(series).replace([np.inf, -np.inf], np.nan).dropna()
-    if series.empty:
+def signals(data, ts):
+    universe, closes = _load_universe_prices(data, ts)
+    if len(universe) < POSITION_BUCKET * 2 + 4 or closes.empty:
         return pd.Series(dtype=float)
-    series = data.winsorize_cross_section(series, lower_pct=0.05, upper_pct=0.95)
-    return data.factor_rank(series)
-
-
-def _neutral_rank(data, series: pd.Series, universe: list[str]) -> pd.Series:
-    ranked = _safe_rank(data, series).reindex(universe)
-    return ranked.fillna(0.5)
-
-
-def _latest_or_neutral(data, field: str, date, universe: list[str]) -> pd.Series:
-    try:
-        values = data.latest_fundamental(field, date).reindex(universe)
-    except Exception:
-        values = pd.Series(0.0, index=universe)
-    return values.fillna(0.0)
-
-
-def _buffered_selection(scores: pd.Series) -> pd.Series:
-    global _PREV_SELECTION
-
-    ranked = pd.Series(scores).dropna().sort_values(ascending=False)
-    if ranked.empty:
-        _PREV_SELECTION = []
-        return ranked
-
-    rank_map = pd.Series(np.arange(1, len(ranked) + 1), index=ranked.index)
-    keep = [ticker for ticker in _PREV_SELECTION if ticker in rank_map.index and int(rank_map[ticker]) <= EXIT_RANK]
-    keep = sorted(dict.fromkeys(keep), key=lambda ticker: int(rank_map[ticker]))
-
-    selected = keep[:NUM_HOLDINGS]
-    entrants = [ticker for ticker in ranked.head(ENTRY_RANK).index if ticker not in selected]
-    needed = max(0, NUM_HOLDINGS - len(selected))
-    selected.extend(entrants[:needed])
-
-    if len(selected) < NUM_HOLDINGS:
-        filler = [ticker for ticker in ranked.index if ticker not in selected]
-        selected.extend(filler[: NUM_HOLDINGS - len(selected)])
-
-    _PREV_SELECTION = selected[:NUM_HOLDINGS]
-    return ranked.reindex(_PREV_SELECTION).dropna()
-
-
-def signals(data, date):
-    """Return a quality-tilted cross-sectional alpha score, sector-neutralized only."""
-    universe = data.tradable_universe(
-        date,
-        min_history_days=252,
-        min_price=10.0,
-        min_dollar_volume=MIN_DOLLAR_VOLUME,
-        countries=("US",),
-    )
-    if len(universe) < min(20, NUM_HOLDINGS):
-        return pd.Series(dtype=float)
-
-    prices = data.prices_signal(universe, end=date).iloc[-252:]
-    if len(prices) < 190:
-        return pd.Series(dtype=float)
-
-    # Risk-adjusted momentum: 12-1m return / volatility, trend-penalized
-    ret_12_1 = prices.iloc[-21] / prices.iloc[0] - 1.0
-    vol_12m = prices.pct_change().iloc[-252:].std().replace(0, np.nan)
-    risk_adj_mom = (ret_12_1 / vol_12m).replace([np.inf, -np.inf], np.nan)
-    ma_200 = prices.iloc[-200:].mean()
-    above_trend = (prices.iloc[-1] > ma_200).astype(float)
-    momentum = risk_adj_mom * (0.5 + 0.5 * above_trend)
-
-    # Quality composite: profitability + ROE + earnings yield
-    roe = _latest_or_neutral(data, "roe", date, universe)
-    profitability = _latest_or_neutral(data, "gross_profitability", date, universe)
-    earnings_yield = _latest_or_neutral(data, "earnings_yield", date, universe)
-    quality = 0.4 * profitability + 0.3 * roe + 0.3 * earnings_yield
-
-    # FCF yield
-    free_cash_flow_yield = _latest_or_neutral(data, "free_cash_flow_yield", date, universe)
-
-    # Low volatility (6-month window)
-    low_vol = -prices.pct_change().iloc[-126:].std()
-
-    # Sector for neutralization (no size neutralization)
-    sector = pd.Series({ticker: data.sector(ticker) for ticker in universe})
-
-    ranks = pd.concat(
-        [
-            _neutral_rank(data, momentum, universe).rename("momentum"),
-            _neutral_rank(data, quality, universe).rename("quality"),
-            _neutral_rank(
-                data,
-                free_cash_flow_yield.fillna(
-                    free_cash_flow_yield.median() if free_cash_flow_yield.notna().any() else 0.0
-                ),
-                universe,
-            ).rename("fcf_yield"),
-            _neutral_rank(data, low_vol, universe).rename("low_vol"),
-        ],
-        axis=1,
-    )
-
-    score = (
-        0.30 * ranks["momentum"]
-        + 0.35 * ranks["quality"]
-        + 0.20 * ranks["fcf_yield"]
-        + 0.15 * ranks["low_vol"]
-    ).reindex(universe)
-
-    score = data.neutralize_cross_section(score.fillna(0.0), by=[sector])
-    return score.dropna().sort_values(ascending=False)
-
-
-def construct(scores, data, date):
-    """Convert scores into diversified target weights with buffered membership."""
-    global _PREV_TARGET_WEIGHTS
-
-    selected = _buffered_selection(scores)
-    if selected.empty:
-        _PREV_TARGET_WEIGHTS = pd.Series(dtype=float)
-        return pd.Series(dtype=float)
-
-    current = pd.Series(1.0 / len(selected), index=selected.index, dtype=float)
-    prev = _PREV_TARGET_WEIGHTS.reindex(selected.index).fillna(0.0)
-    if float(prev.sum()) > 0:
-        prev /= float(prev.sum())
-        weights = 0.35 * prev + 0.65 * current
+    family = str(MODEL_FAMILY)
+    if family == "residual_reversal":
+        score = _signals_residual_reversal(data, ts, universe, closes)
+    elif family == "funding_dislocation":
+        score = _signals_funding_dislocation(data, ts, universe, closes)
+    elif family == "beta_neutral_momentum":
+        score = _signals_beta_neutral_momentum(data, ts, universe, closes)
     else:
-        weights = current
-    weights /= float(weights.sum())
-    _PREV_TARGET_WEIGHTS = weights.copy()
-    weights.loc["__CASH__"] = 0.0
-    return weights
+        raise ValueError(f"Unknown MODEL_FAMILY '{family}'")
+    return _finalize_scores(data, ts, universe, score).sort_values(ascending=False)
 
 
-def risk(weights, data, date):
-    """Apply position and sector caps."""
-    if len(weights) == 0:
-        return weights
+def construct(scores, data, ts):
+    scores = pd.Series(scores, dtype=float).dropna().sort_values(ascending=False)
+    if len(scores) < POSITION_BUCKET * 2:
+        return pd.Series(dtype=float)
+    longs = scores.head(POSITION_BUCKET)
+    shorts = scores.tail(POSITION_BUCKET)
+    long_weights = longs.abs() / float(longs.abs().sum())
+    short_weights = shorts.abs() / float(shorts.abs().sum())
+    weights = pd.concat([0.5 * long_weights, -0.5 * short_weights])
+    return weights.groupby(level=0).sum()
 
-    cash = float(weights.get("__CASH__", 0.0))
-    asset_weights = weights.drop(labels=["__CASH__"], errors="ignore").copy()
-    asset_weights = asset_weights.clip(lower=0.0, upper=MAX_POSITION_WEIGHT)
 
-    sectors: dict[str, list[str]] = {}
-    for ticker in asset_weights.index:
-        sectors.setdefault(data.sector(ticker), []).append(ticker)
+def risk(weights, data, ts):
+    return pd.Series(weights, dtype=float)
 
-    target_total = max(0.0, 1.0 - cash)
-    if float(asset_weights.sum()) > 0:
-        asset_weights = asset_weights / float(asset_weights.sum()) * target_total
 
-    for _ in range(10):
-        prev = asset_weights.copy()
-        asset_weights = asset_weights.clip(lower=0.0, upper=MAX_POSITION_WEIGHT)
+def _load_universe_prices(data, ts) -> tuple[list[str], pd.DataFrame]:
+    universe = data.tradable_universe(ts, **default_universe_kwargs(EXECUTION))
+    required_bars = max(LOOKBACK_SHORT_HOURS, LOOKBACK_MEDIUM_HOURS, VOL_WINDOW_HOURS, BETA_WINDOW_HOURS) + 1
+    if len(universe) < POSITION_BUCKET * 2 + 4:
+        return universe, pd.DataFrame()
+    closes = data.prices(universe, end=ts).iloc[-required_bars:]
+    if len(closes) < required_bars:
+        return universe, pd.DataFrame()
+    return universe, closes
 
-        for members in sectors.values():
-            sector_weight = float(asset_weights[members].sum())
-            if sector_weight > MAX_SECTOR_WEIGHT:
-                asset_weights.loc[members] *= MAX_SECTOR_WEIGHT / sector_weight
 
-        total = float(asset_weights.sum())
-        slack = max(0.0, target_total - total)
-        if slack > 1e-12:
-            eligible = asset_weights[(asset_weights > 0) & (asset_weights < MAX_POSITION_WEIGHT - 1e-12)]
-            eligible = eligible[
-                [
-                    float(asset_weights[sectors[data.sector(ticker)]].sum()) < MAX_SECTOR_WEIGHT - 1e-12
-                    for ticker in eligible.index
-                ]
-            ]
-            if len(eligible):
-                add = eligible / float(eligible.sum()) * slack
-                asset_weights.loc[eligible.index] += add
+def _signals_residual_reversal(data, ts, universe: list[str], closes: pd.DataFrame) -> pd.Series:
+    short_return = _horizon_return(closes, LOOKBACK_SHORT_HOURS)
+    medium_return = _horizon_return(closes, LOOKBACK_MEDIUM_HOURS)
+    market_short = float(short_return.mean())
+    residual = short_return - market_short
+    funding = _funding_mean(data, universe, ts)
+    return (
+        -RESIDUAL_WEIGHT * data.zscore_cross_section(residual)
+        -MEDIUM_WEIGHT * data.zscore_cross_section(medium_return)
+        -FUNDING_WEIGHT * data.zscore_cross_section(funding)
+    )
 
-        if np.allclose(asset_weights.reindex(prev.index).fillna(0.0), prev.fillna(0.0), atol=1e-10):
-            break
 
-    final = asset_weights.copy()
-    final.loc["__CASH__"] = max(0.0, 1.0 - float(asset_weights.sum()))
-    return final
+def _signals_funding_dislocation(data, ts, universe: list[str], closes: pd.DataFrame) -> pd.Series:
+    short_return = _horizon_return(closes, LOOKBACK_SHORT_HOURS)
+    medium_return = _horizon_return(closes, LOOKBACK_MEDIUM_HOURS)
+    funding = _funding_mean(data, universe, ts)
+    funding_z = data.zscore_cross_section(funding)
+    short_z = data.zscore_cross_section(short_return)
+    medium_z = data.zscore_cross_section(medium_return)
+    # Crowded positive funding plus stretched price is a fade; deeply negative funding plus weak price is the long leg.
+    dislocation = 0.55 * funding_z + 0.30 * short_z + 0.15 * medium_z
+    return -dislocation
+
+
+def _signals_beta_neutral_momentum(data, ts, universe: list[str], closes: pd.DataFrame) -> pd.Series:
+    medium_return = _horizon_return(closes, LOOKBACK_MEDIUM_HOURS)
+    short_return = _horizon_return(closes, LOOKBACK_SHORT_HOURS)
+    asset_returns = closes.pct_change().iloc[-BETA_WINDOW_HOURS:].dropna(how="all")
+    if asset_returns.empty:
+        return pd.Series(dtype=float)
+    market_returns = asset_returns.mean(axis=1)
+    beta = _rolling_beta(asset_returns, market_returns).reindex(universe).fillna(1.0)
+    vol = asset_returns.std().replace(0.0, np.nan).reindex(universe)
+    momentum = (medium_return / vol).replace([np.inf, -np.inf], np.nan)
+    score = data.zscore_cross_section(momentum) + MOMENTUM_CONFIRM_WEIGHT * data.zscore_cross_section(short_return)
+    # Strip market beta directly from the alpha vector before the generic neutralization pass.
+    return data.neutralize_cross_section(score.fillna(0.0), by=[beta])
+
+
+def _finalize_scores(data, ts, universe: list[str], raw_score: pd.Series) -> pd.Series:
+    score = pd.Series(raw_score, dtype=float).reindex(universe).dropna()
+    if score.empty:
+        return score
+    score = data.winsorize_cross_section(score, 0.05, 0.95)
+    sector = pd.Series({asset: data.sector(asset) for asset in score.index})
+    liquidity = _liquidity_exposure(data, ts, score.index)
+    return data.neutralize_cross_section(score, by=[sector, liquidity.reindex(score.index).fillna(0.0)])
+
+
+def _liquidity_exposure(data, ts, universe) -> pd.Series:
+    dollar_volume = data.dollar_volume(LIQUIDITY_WINDOW_HOURS, ts).reindex(universe)
+    return data.zscore_cross_section(dollar_volume.replace(0.0, pd.NA).dropna())
+
+
+def _funding_mean(data, universe: list[str], ts) -> pd.Series:
+    funding_panel = data.funding(universe, end=ts)
+    if funding_panel.empty:
+        return pd.Series(0.0, index=universe, dtype=float)
+    return funding_panel.iloc[-min(FUNDING_WINDOW_HOURS, len(funding_panel)) :].mean().reindex(universe).fillna(0.0)
+
+
+def _horizon_return(closes: pd.DataFrame, lookback_hours: int) -> pd.Series:
+    if len(closes) < lookback_hours + 1:
+        return pd.Series(dtype=float)
+    return closes.iloc[-1] / closes.iloc[-(lookback_hours + 1)] - 1.0
+
+
+def _rolling_beta(asset_returns: pd.DataFrame, market_returns: pd.Series) -> pd.Series:
+    market_var = float(pd.Series(market_returns).var(ddof=1))
+    if not np.isfinite(market_var) or market_var == 0:
+        return pd.Series(1.0, index=asset_returns.columns, dtype=float)
+    betas = {}
+    for asset in asset_returns.columns:
+        pair = pd.concat([asset_returns[asset], market_returns], axis=1).dropna()
+        if len(pair) < 5:
+            betas[asset] = 1.0
+            continue
+        betas[asset] = float(pair.iloc[:, 0].cov(pair.iloc[:, 1]) / market_var)
+    return pd.Series(betas, dtype=float)

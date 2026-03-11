@@ -1,0 +1,2 @@
+"""Hyperliquid research harness package."""
+

@@ -1,0 +1,422 @@
+{
+  "AAVE": {
+    "dayBaseVlm": "67002.6",
+    "dayNtlVlm": "7471332.4598000022",
+    "funding": "0.0000106692",
+    "impactPxs": [
+      "110.8602",
+      "110.8876"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-06-06 08:00:00",
+    "marginTableId": 52,
+    "markPx": "110.87",
+    "maxLeverage": 10,
+    "midPx": "110.875",
+    "name": "AAVE",
+    "openInterest": "197275.42",
+    "oraclePx": "110.94",
+    "premium": "-0.0004723274",
+    "prevDayPx": "107.96",
+    "szDecimals": 2
+  },
+  "BCH": {
+    "dayBaseVlm": "17121.071",
+    "dayNtlVlm": "7672233.491390001",
+    "funding": "-0.0000205524",
+    "impactPxs": [
+      "444.617",
+      "444.762"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-05-19 11:00:00",
+    "marginTableId": 52,
+    "markPx": "444.7",
+    "maxLeverage": 10,
+    "midPx": "444.67",
+    "name": "BCH",
+    "openInterest": "49768.614",
+    "oraclePx": "445.08",
+    "premium": "-0.0007144783",
+    "prevDayPx": "450.02",
+    "szDecimals": 3
+  },
+  "BTC": {
+    "dayBaseVlm": "48514.4263799999",
+    "dayNtlVlm": "3407465984.851328373",
+    "funding": "-0.0000290843",
+    "impactPxs": [
+      "69735.0",
+      "69736.0"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-04-04 02:00:00",
+    "marginTableId": 56,
+    "markPx": "69736.0",
+    "maxLeverage": 40,
+    "midPx": "69735.5",
+    "name": "BTC",
+    "openInterest": "25201.41826",
+    "oraclePx": "69788.0",
+    "premium": "-0.0007451138",
+    "prevDayPx": "68885.0",
+    "szDecimals": 5
+  },
+  "DOGE": {
+    "dayBaseVlm": "155148800.0",
+    "dayNtlVlm": "14786932.0445900001",
+    "funding": "-0.0000002956",
+    "impactPxs": [
+      "0.094364",
+      "0.094381"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-04-04 02:00:00",
+    "marginTableId": 52,
+    "markPx": "0.094363",
+    "maxLeverage": 10,
+    "midPx": "0.094372",
+    "name": "DOGE",
+    "openInterest": "243286050.0",
+    "oraclePx": "0.09442",
+    "premium": "-0.0004130481",
+    "prevDayPx": "0.091444",
+    "szDecimals": 0
+  },
+  "ETH": {
+    "dayBaseVlm": "473553.7577",
+    "dayNtlVlm": "966522584.40993011",
+    "funding": "-0.0000048727",
+    "impactPxs": [
+      "2028.0",
+      "2028.1"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-04-04 02:00:00",
+    "marginTableId": 55,
+    "markPx": "2028.0",
+    "maxLeverage": 25,
+    "midPx": "2028.05",
+    "name": "ETH",
+    "openInterest": "569023.1994000002",
+    "oraclePx": "2029.1",
+    "premium": "-0.0004928293",
+    "prevDayPx": "2027.3",
+    "szDecimals": 4
+  },
+  "FARTCOIN": {
+    "dayBaseVlm": "100816806.1000000089",
+    "dayNtlVlm": "15410167.800156001",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "0.15245",
+      "0.1526"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-14 13:00:00",
+    "marginTableId": 52,
+    "markPx": "0.15251",
+    "maxLeverage": 10,
+    "midPx": "0.15253",
+    "name": "FARTCOIN",
+    "openInterest": "165037753.400000006",
+    "oraclePx": "0.15255",
+    "premium": "0.0",
+    "prevDayPx": "0.15137",
+    "szDecimals": 1
+  },
+  "HYPE": {
+    "dayBaseVlm": "9364286.7600000016",
+    "dayNtlVlm": "322823312.332650125",
+    "funding": "-0.0000005375",
+    "impactPxs": [
+      "33.6571",
+      "33.6659"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-05-30 10:00:00",
+    "marginTableId": 52,
+    "markPx": "33.659",
+    "maxLeverage": 10,
+    "midPx": "33.6615",
+    "name": "HYPE",
+    "openInterest": "17755103.7399999909",
+    "oraclePx": "33.679",
+    "premium": "-0.0003889664",
+    "prevDayPx": "35.249",
+    "szDecimals": 2
+  },
+  "LIT": {
+    "dayBaseVlm": "10380401.0",
+    "dayNtlVlm": "10888781.0921",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "1.0427",
+      "1.043431"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-12-22 15:00:00",
+    "marginTableId": 5,
+    "markPx": "1.0435",
+    "maxLeverage": 5,
+    "midPx": "1.0433",
+    "name": "LIT",
+    "openInterest": "29531100.0",
+    "oraclePx": "1.0435",
+    "premium": "-0.0000661236",
+    "prevDayPx": "1.0523",
+    "szDecimals": 0
+  },
+  "NEAR": {
+    "dayBaseVlm": "6235108.7999999998",
+    "dayNtlVlm": "8007933.0979200015",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "1.2784",
+      "1.27913"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-09-28 23:00:00",
+    "marginTableId": 52,
+    "markPx": "1.2787",
+    "maxLeverage": 10,
+    "midPx": "1.2789",
+    "name": "NEAR",
+    "openInterest": "11936247.4000000004",
+    "oraclePx": "1.2785",
+    "premium": "0.0",
+    "prevDayPx": "1.2476",
+    "szDecimals": 1
+  },
+  "PAXG": {
+    "dayBaseVlm": "3634.613",
+    "dayNtlVlm": "18884541.8859999962",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "5193.393",
+      "5194.3"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-03-27 10:00:00",
+    "marginTableId": 51,
+    "markPx": "5194.1",
+    "maxLeverage": 10,
+    "midPx": "5194.25",
+    "name": "PAXG",
+    "openInterest": "13416.02",
+    "oraclePx": "5194.9",
+    "premium": "-0.0001154979",
+    "prevDayPx": "5140.6",
+    "szDecimals": 3
+  },
+  "PUMP": {
+    "dayBaseVlm": "4173319667.0",
+    "dayNtlVlm": "8496367.0893460009",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "0.002",
+      "0.002002"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-10 16:00:00",
+    "marginTableId": 52,
+    "markPx": "0.002001",
+    "maxLeverage": 10,
+    "midPx": "0.002001",
+    "name": "PUMP",
+    "openInterest": "21414971026.0",
+    "oraclePx": "0.002001",
+    "premium": "0.0",
+    "prevDayPx": "0.002006",
+    "szDecimals": 0
+  },
+  "SOL": {
+    "dayBaseVlm": "3588715.3999999994",
+    "dayNtlVlm": "310946178.7196698785",
+    "funding": "-0.0000141135",
+    "impactPxs": [
+      "85.691",
+      "85.6998"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-04-04 02:00:00",
+    "marginTableId": 54,
+    "markPx": "85.687",
+    "maxLeverage": 20,
+    "midPx": "85.693",
+    "name": "SOL",
+    "openInterest": "3071954.7199999997",
+    "oraclePx": "85.735",
+    "premium": "-0.0004105674",
+    "prevDayPx": "85.973",
+    "szDecimals": 2
+  },
+  "SUI": {
+    "dayBaseVlm": "28463920.1999999993",
+    "dayNtlVlm": "27529674.1707379855",
+    "funding": "0.000008586",
+    "impactPxs": [
+      "0.95217",
+      "0.95242"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-05-03 16:00:00",
+    "marginTableId": 52,
+    "markPx": "0.95225",
+    "maxLeverage": 10,
+    "midPx": "0.95231",
+    "name": "SUI",
+    "openInterest": "21199280.0",
+    "oraclePx": "0.9529",
+    "premium": "-0.0005037255",
+    "prevDayPx": "0.96577",
+    "szDecimals": 1
+  },
+  "TAO": {
+    "dayBaseVlm": "81690.223",
+    "dayNtlVlm": "16448042.7712299973",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "199.052",
+      "199.12"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-14 11:00:00",
+    "marginTableId": 5,
+    "markPx": "199.11",
+    "maxLeverage": 5,
+    "midPx": "199.115",
+    "name": "TAO",
+    "openInterest": "111138.26",
+    "oraclePx": "199.2",
+    "premium": "-0.0004016064",
+    "prevDayPx": "195.29",
+    "szDecimals": 3
+  },
+  "VIRTUAL": {
+    "dayBaseVlm": "11375823.2999999989",
+    "dayNtlVlm": "7887274.868293996",
+    "funding": "0.0000067649",
+    "impactPxs": [
+      "0.69809",
+      "0.69868"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2024-12-10 12:00:00",
+    "marginTableId": 5,
+    "markPx": "0.69825",
+    "maxLeverage": 5,
+    "midPx": "0.69837",
+    "name": "VIRTUAL",
+    "openInterest": "17176681.5999999978",
+    "oraclePx": "0.69885",
+    "premium": "-0.0002432568",
+    "prevDayPx": "0.66831",
+    "szDecimals": 1
+  },
+  "VVV": {
+    "dayBaseVlm": "1421702.7799999998",
+    "dayNtlVlm": "7772906.6618310008",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "5.5302",
+      "5.5428"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-14 14:00:00",
+    "marginTableId": 3,
+    "markPx": "5.5399",
+    "maxLeverage": 3,
+    "midPx": "5.5399",
+    "name": "VVV",
+    "openInterest": "1599681.6799999999",
+    "oraclePx": "5.5446",
+    "premium": "-0.0003246402",
+    "prevDayPx": "5.1662",
+    "szDecimals": 2
+  },
+  "XPL": {
+    "dayBaseVlm": "116954586.0",
+    "dayNtlVlm": "11486842.7111050002",
+    "funding": "0.0000125",
+    "impactPxs": [
+      "0.09788",
+      "0.097989"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-22 09:00:00",
+    "marginTableId": 51,
+    "markPx": "0.097888",
+    "maxLeverage": 10,
+    "midPx": "0.097923",
+    "name": "XPL",
+    "openInterest": "354695254.0",
+    "oraclePx": "0.097875",
+    "premium": "0.0000510856",
+    "prevDayPx": "0.093664",
+    "szDecimals": 0
+  },
+  "XRP": {
+    "dayBaseVlm": "45067635.0",
+    "dayNtlVlm": "62958097.9560999945",
+    "funding": "-0.0000224889",
+    "impactPxs": [
+      "1.3828",
+      "1.3829"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-05-07 08:00:00",
+    "marginTableId": 53,
+    "markPx": "1.3828",
+    "maxLeverage": 20,
+    "midPx": "1.38285",
+    "name": "XRP",
+    "openInterest": "58265204.0",
+    "oraclePx": "1.3838",
+    "premium": "-0.000650383",
+    "prevDayPx": "1.3731",
+    "szDecimals": 0
+  },
+  "ZEC": {
+    "dayBaseVlm": "151402.88",
+    "dayNtlVlm": "33722355.8264000043",
+    "funding": "-0.0000650984",
+    "impactPxs": [
+      "221.02",
+      "221.03"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2025-08-21 22:00:00",
+    "marginTableId": 52,
+    "markPx": "221.08",
+    "maxLeverage": 10,
+    "midPx": "221.025",
+    "name": "ZEC",
+    "openInterest": "247414.9",
+    "oraclePx": "221.36",
+    "premium": "-0.0014907842",
+    "prevDayPx": "216.34",
+    "szDecimals": 2
+  },
+  "kPEPE": {
+    "dayBaseVlm": "2443888733.0",
+    "dayNtlVlm": "8261358.5039560022",
+    "funding": "-0.0000141193",
+    "impactPxs": [
+      "0.003292",
+      "0.003293"
+    ],
+    "listing_end": "2026-03-10 21:00:00",
+    "listing_start": "2023-07-01 07:00:00",
+    "marginTableId": 52,
+    "markPx": "0.003293",
+    "maxLeverage": 10,
+    "midPx": "0.003292",
+    "name": "kPEPE",
+    "openInterest": "2938227458.0",
+    "oraclePx": "0.003296",
+    "premium": "-0.0009101942",
+    "prevDayPx": "0.003307",
+    "szDecimals": 0
+  }
+}
