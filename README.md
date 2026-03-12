@@ -8,16 +8,30 @@ The repo is intentionally narrow:
 - strategy layer: feature engineering plus a trainable statistical model
 - judge layer: deterministic next-bar backtest and period evaluation
 - experiment layer: JSON result files and a flat leaderboard
+- paper layer: current deploy candidate snapshot for paper trading
 
 ## Core Layout
 
 - `strategy.py`: editable statistical strategy surface
-- `strategy_model.py`: small helper for feature generation, dataset building, and linear-model fitting
+- `strategy_model.py`: small helper for feature generation, dataset building, linear-model fitting, and fit diagnostics
 - `run.py`: manual CLI for cache build and single-period evaluation
+- `paper_trade.py`: emits the latest live-fit model snapshot, scores, and weights for paper trading
 - `autoresearch.py`: deterministic bounded experiment runner
 - `q_lab_hl/`: fixed data, execution, portfolio, and evaluation modules
 - `autoresearch/`: experiment config, leaderboard, and result outputs
+- `paper/`: generated paper-trading signal snapshots
 - `data/market_cache_1h/`: bundled hourly market cache
+
+## Current Default Strategy
+
+The checked-in default is the overnight winner:
+
+- OLS
+- 3 rank features: `ret_1h`, `ma_gap_24h`, `funding_8h`
+- 21-day train window
+- 5 long / 5 short
+- next open-to-close target
+- 24h rebalance cadence
 
 ## What Stays Fixed
 
@@ -65,11 +79,45 @@ Emit the same result as JSON:
 python3 run.py --evaluate --data-dir data/market_cache_1h --period outer --json --show-fit
 ```
 
-Rebuild the Hyperliquid cache:
+Refresh the Hyperliquid cache:
 
 ```bash
-python3 run.py --build-cache --cache-dir data/market_cache_1h --start 2020-01-01 --timeframe 1h --top-n 20 --no-ssl-verify
+python3 run.py --build-cache --cache-dir data/market_cache_1h --start 2025-01-01 --timeframe 1h --top-n 20 --no-ssl-verify
 ```
+
+Generate the current paper-trading snapshot:
+
+```bash
+python3 paper_trade.py --data-dir data/market_cache_1h --output paper/live_signal_latest.json
+```
+
+Refresh data + regenerate the paper snapshot in one step:
+
+```bash
+./scripts/run_paper_trade.sh
+```
+
+Install an hourly cron job for paper trading refresh:
+
+```bash
+./scripts/install_paper_trade_cron.sh
+```
+
+## Fit Diagnostics That Matter More Than p-values
+
+The latest fit summary now includes:
+
+- current coefficients and intercept
+- train R² and adjusted R²
+- RMSE and MAE
+- pooled prediction/target correlation
+- pooled prediction/target rank correlation
+- cross-sectional Pearson IC mean / median / positive-share
+- cross-sectional rank IC mean / median / positive-share
+- top-vs-bottom quintile realized target spread
+- OLS parameter standard errors and t-stats when the model family is OLS
+
+For this workflow, these are still secondary to true out-of-sample performance, but they are much more useful sanity checks than staring at p-values alone.
 
 ## Strategy Workflow
 
@@ -96,21 +144,6 @@ At each rebalance timestamp it:
 3. fits a small linear model
 4. predicts next-bar scores for the current cross-section
 5. converts those scores into long/short weights
-
-The default feature set is:
-
-- 1h return
-- 6h return
-- 24h return
-- 24h realized volatility
-- 24h moving-average gap
-- 8h mean funding
-
-Supported feature transforms currently include:
-
-- `zscore`
-- `rank`
-- `none`
 
 ## Autoresearch Workflow
 

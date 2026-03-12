@@ -1,0 +1,100 @@
+{
+  "current_assets": [
+    "BTC",
+    "ETH",
+    "FARTCOIN",
+    "HYPE",
+    "PAXG",
+    "SOL",
+    "SUI",
+    "VVV",
+    "XRP",
+    "ZEC"
+  ],
+  "data_dir": "data/market_cache_1h",
+  "execution": {
+    "bars_per_year": 8760,
+    "listing_cooldown_bars": 72,
+    "max_abs_weight": 0.08,
+    "max_gross_exposure": 1.5,
+    "max_group_gross": 0.35,
+    "min_dollar_volume": 500000.0,
+    "min_history_bars": 336,
+    "min_price": 0.1,
+    "rebalance_every_bars": 24,
+    "slippage_bps": 2.0,
+    "taker_fee_bps": 4.0,
+    "target_gross_exposure": 1.0,
+    "target_net_exposure": 0.0
+  },
+  "model_fit": {
+    "coefficients": {
+      "funding_8h": -0.04214134224544462,
+      "ma_gap_24h": -0.0008636921891742872,
+      "ret_1h": -0.0002881644309731257
+    },
+    "diagnostics": {
+      "cross_sectional_pearson_ic_mean": 0.0699913377798006,
+      "cross_sectional_pearson_ic_median": 0.10790357487844485,
+      "cross_sectional_pearson_ic_positive_share": 0.5568862275449101,
+      "cross_sectional_rank_ic_mean": 0.07969445723936741,
+      "cross_sectional_rank_ic_median": 0.0696969696969697,
+      "cross_sectional_rank_ic_positive_share": 0.5718562874251497,
+      "n_features": 3,
+      "ols_residual_dof": 3386,
+      "ols_sigma2": 0.00010849105944004253,
+      "parameter_std_error": {
+        "funding_8h": 0.09915671548613664,
+        "intercept": 0.00488783004520386,
+        "ma_gap_24h": 0.0006404780699343668,
+        "ret_1h": 0.0006404780699343667
+      },
+      "parameter_t_stat": {
+        "funding_8h": -0.42499735937034455,
+        "intercept": 0.5177667423522689,
+        "ma_gap_24h": -1.3485117285323984,
+        "ret_1h": -0.4499208396044778
+      },
+      "top_bottom_quintile_target_spread_mean": 0.0011654519667694504,
+      "top_bottom_quintile_target_spread_median": 0.0014095780232316057,
+      "train_adj_r2": -0.00010970098814944151,
+      "train_mae": 0.006724939095652381,
+      "train_prediction_target_corr": 0.027849829427702377,
+      "train_prediction_target_rank_corr": 0.04573466322097591,
+      "train_r2": 0.0007756129991520755,
+      "train_rmse": 0.01040975726857047
+    },
+    "family": "ols",
+    "intercept": 0.002530755839676746,
+    "l2_reg": 0.0,
+    "n_train_rows": 3390,
+    "train_end": "2026-03-12T12:00:00",
+    "train_start": "2026-02-19T13:00:00"
+  },
+  "scores": {
+    "BTC": 0.00011522571720199587,
+    "ETH": -0.00011506549645297771,
+    "FARTCOIN": 0.0002590676015650318,
+    "HYPE": -0.0004895190359690231,
+    "PAXG": -5.759283100737042e-05,
+    "SOL": -0.00028788404466234443,
+    "SUI": 1.2016556176334698e-07,
+    "VVV": 0.00025898749119052263,
+    "XRP": 0.00017277849302211213,
+    "ZEC": 0.00014388193955029032
+  },
+  "strategy_path": "strategy.py",
+  "timestamp": "2026-03-12T13:00:00",
+  "weights": {
+    "BTC": 0.06064886544725563,
+    "ETH": -0.06054921482561861,
+    "FARTCOIN": 0.13635980309427564,
+    "HYPE": -0.25759236420824627,
+    "PAXG": -0.030306223886201095,
+    "SOL": -0.15148896413315033,
+    "SUI": -6.323294678369025e-05,
+    "VVV": 0.13631763713130735,
+    "XRP": 0.09094167369865733,
+    "ZEC": 0.07573202062850407
+  }
+}

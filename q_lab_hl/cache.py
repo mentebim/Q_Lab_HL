@@ -95,8 +95,18 @@ def _meta_and_ctxs(client) -> tuple[dict, dict]:
     else:
         meta_payload = client.meta()
         ctx_payload = []
-    universe = {row["name"]: row for row in meta_payload.get("universe", [])}
-    ctxs = {row["name"]: row for row in ctx_payload}
+    universe_rows = list(meta_payload.get("universe", []))
+    universe = {row["name"]: row for row in universe_rows}
+    ctxs = {}
+    for idx, row in enumerate(ctx_payload):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        if name is None and idx < len(universe_rows):
+            name = universe_rows[idx].get("name")
+        if name is None:
+            continue
+        ctxs[str(name)] = row
     return universe, ctxs
 
 

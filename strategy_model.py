@@ -94,6 +94,7 @@ class LinearModel:
     n_train_rows: int
     train_start: str
     train_end: str
+    diagnostics: dict[str, Any]
 
     def summary(self) -> dict:
         return {
@@ -104,6 +105,7 @@ class LinearModel:
             "train_end": self.train_end,
             "coefficients": dict(zip(self.feature_names, self.coefficients)),
             "intercept": self.intercept,
+            "diagnostics": self.diagnostics,
         }
 
 
@@ -131,6 +133,7 @@ def build_training_dataset(
     x_rows: list[np.ndarray] = []
     y_rows: list[float] = []
     train_timestamps: list[pd.Timestamp] = []
+    train_assets: list[str] = []
     universe_kwargs = default_universe_kwargs(execution)
 
     for pos in range(train_start_pos, current_pos):
@@ -157,6 +160,7 @@ def build_training_dataset(
         x_rows.append(feature_block.loc[aligned_assets].to_numpy(dtype=float))
         y_rows.append(target_block.loc[aligned_assets].to_numpy(dtype=float))
         train_timestamps.extend([sample_ts] * len(aligned_assets))
+        train_assets.extend(aligned_assets)
 
     current_universe = data.tradable_universe(ts, **universe_kwargs)
     current_features = _current_feature_matrix(feature_frames, strategy_spec.features, ts, current_universe)
@@ -182,6 +186,9 @@ def build_training_dataset(
         "current_assets": list(current_features.index),
         "train_start": train_start,
         "train_end": train_end,
+        "train_timestamps": pd.DatetimeIndex(train_timestamps),
+        "train_assets": tuple(train_assets),
+        "current_timestamp": ts.isoformat(),
     }
 
 
@@ -194,6 +201,7 @@ def fit_linear_model(
     l2_reg: float,
     train_start: str,
     train_end: str,
+    train_timestamps: pd.DatetimeIndex | None = None,
 ) -> LinearModel | None:
     if len(X_train) == 0 or len(y_train) == 0:
         return None
@@ -210,6 +218,14 @@ def fit_linear_model(
         beta, *_ = np.linalg.lstsq(design, y, rcond=None)
     else:
         raise ValueError(f"Unsupported model family '{family}'")
+    diagnostics = _fit_diagnostics(
+        design=design,
+        y=y,
+        beta=np.asarray(beta, dtype=float),
+        feature_names=feature_names,
+        family=family,
+        train_timestamps=train_timestamps,
+    )
     return LinearModel(
         feature_names=feature_names,
         intercept=float(beta[0]),
@@ -219,6 +235,7 @@ def fit_linear_model(
         n_train_rows=int(X.shape[0]),
         train_start=train_start,
         train_end=train_end,
+        diagnostics=diagnostics,
     )
 
 
@@ -241,6 +258,60 @@ def predict_scores(
         return scores
     scores = scores.clip(lower=-clip_predictions, upper=clip_predictions)
     return scores - float(scores.mean())
+
+
+def latest_snapshot(
+    data,
+    ts,
+    *,
+    execution: ExecutionConfig,
+    strategy_spec: StrategySpec,
+) -> dict[str, Any]:
+    dataset = build_training_dataset(data, ts, execution=execution, strategy_spec=strategy_spec)
+    model = fit_linear_model(
+        dataset["X_train"],
+        dataset["y_train"],
+        feature_names=dataset["feature_names"],
+        family=strategy_spec.model.family,
+        l2_reg=strategy_spec.model.l2_reg,
+        train_start=dataset["train_start"],
+        train_end=dataset["train_end"],
+        train_timestamps=dataset.get("train_timestamps"),
+    )
+    if model is None:
+        return {
+            "timestamp": pd.Timestamp(ts).isoformat(),
+            "current_assets": [],
+            "scores": {},
+            "weights": {},
+            "model_fit": {},
+        }
+    scores = predict_scores(
+        model,
+        dataset["X_now"],
+        dataset["current_assets"],
+        clip_predictions=strategy_spec.model.prediction_clip,
+    )
+    weights = construct_portfolio(scores, strategy_spec.position_bucket)
+    return {
+        "timestamp": pd.Timestamp(ts).isoformat(),
+        "current_assets": list(scores.index),
+        "scores": {asset: float(value) for asset, value in scores.sort_values(ascending=False).items()},
+        "weights": {asset: float(value) for asset, value in weights.sort_values(ascending=False).items()},
+        "model_fit": model.summary(),
+    }
+
+
+def construct_portfolio(scores: pd.Series, position_bucket: int) -> pd.Series:
+    scores = pd.Series(scores, dtype=float).dropna().sort_values(ascending=False)
+    if len(scores) < position_bucket * 2:
+        return pd.Series(dtype=float)
+    longs = scores.head(position_bucket)
+    shorts = scores.tail(position_bucket)
+    long_weights = longs.abs() / float(longs.abs().sum())
+    short_weights = shorts.abs() / float(shorts.abs().sum())
+    weights = pd.concat([0.5 * long_weights, -0.5 * short_weights])
+    return weights.groupby(level=0).sum()
 
 
 def _build_feature_frames(
@@ -315,6 +386,9 @@ def _empty_dataset(feature_specs: tuple[FeatureSpec, ...]) -> dict:
         "current_assets": [],
         "train_start": "",
         "train_end": "",
+        "train_timestamps": pd.DatetimeIndex([]),
+        "train_assets": tuple(),
+        "current_timestamp": "",
     }
 
 
@@ -347,3 +421,152 @@ def _build_target_frame(close: pd.DataFrame, open_: pd.DataFrame, target_spec: T
     if target_spec.kind == "next_close_to_close_return":
         return close.shift(-1) / close - 1.0
     raise ValueError(f"Unsupported target kind '{target_spec.kind}'")
+
+
+def _fit_diagnostics(
+    *,
+    design: np.ndarray,
+    y: np.ndarray,
+    beta: np.ndarray,
+    feature_names: tuple[str, ...],
+    family: str,
+    train_timestamps: pd.DatetimeIndex | None,
+) -> dict[str, Any]:
+    predictions = design @ beta
+    residuals = y - predictions
+    n_obs = int(len(y))
+    n_features = int(len(feature_names))
+    rss = float(np.square(residuals).sum())
+    centered = y - float(np.mean(y))
+    tss = float(np.square(centered).sum())
+    r2 = 0.0 if tss <= 0.0 else max(min(1.0 - rss / tss, 1.0), -1.0)
+    adj_r2 = None
+    if n_obs > n_features + 1:
+        adj_r2 = 1.0 - (1.0 - r2) * (n_obs - 1) / (n_obs - n_features - 1)
+    rmse = float(np.sqrt(np.mean(np.square(residuals)))) if n_obs else 0.0
+    mae = float(np.mean(np.abs(residuals))) if n_obs else 0.0
+    pearson = _safe_corr(predictions, y)
+    spearman = _safe_corr(_rank_vector(predictions), _rank_vector(y))
+
+    diagnostics: dict[str, Any] = {
+        "train_r2": float(r2),
+        "train_adj_r2": None if adj_r2 is None else float(adj_r2),
+        "train_rmse": rmse,
+        "train_mae": mae,
+        "train_prediction_target_corr": pearson,
+        "train_prediction_target_rank_corr": spearman,
+        "n_features": n_features,
+    }
+
+    if train_timestamps is not None and len(train_timestamps) == n_obs:
+        panel = pd.DataFrame(
+            {
+                "timestamp": pd.DatetimeIndex(train_timestamps),
+                "prediction": predictions,
+                "target": y,
+            }
+        )
+        diagnostics.update(_cross_sectional_diagnostics(panel))
+
+    if family == "ols":
+        diagnostics.update(_ols_parameter_diagnostics(design, residuals, beta, feature_names))
+    return diagnostics
+
+
+def _ols_parameter_diagnostics(
+    design: np.ndarray,
+    residuals: np.ndarray,
+    beta: np.ndarray,
+    feature_names: tuple[str, ...],
+) -> dict[str, Any]:
+    n_obs, n_params = design.shape
+    if n_obs <= n_params:
+        return {}
+    dof = n_obs - n_params
+    sigma2 = float(np.square(residuals).sum() / dof)
+    xtx_inv = np.linalg.pinv(design.T @ design)
+    cov = sigma2 * xtx_inv
+    std_err = np.sqrt(np.clip(np.diag(cov), a_min=0.0, a_max=None))
+    t_stats = np.divide(beta, std_err, out=np.zeros_like(beta), where=std_err > 0)
+    names = ("intercept",) + tuple(feature_names)
+    return {
+        "ols_sigma2": sigma2,
+        "ols_residual_dof": int(dof),
+        "parameter_std_error": {name: float(value) for name, value in zip(names, std_err)},
+        "parameter_t_stat": {name: float(value) for name, value in zip(names, t_stats)},
+    }
+
+
+def _cross_sectional_diagnostics(panel: pd.DataFrame) -> dict[str, Any]:
+    grouped = panel.groupby("timestamp", sort=True)
+    pearson_values: list[float] = []
+    spearman_values: list[float] = []
+    spread_values: list[float] = []
+    for _, frame in grouped:
+        if len(frame) < 4:
+            continue
+        pearson = _safe_corr(frame["prediction"].to_numpy(dtype=float), frame["target"].to_numpy(dtype=float))
+        spearman = _safe_corr(
+            _rank_vector(frame["prediction"].to_numpy(dtype=float)),
+            _rank_vector(frame["target"].to_numpy(dtype=float)),
+        )
+        if pearson is not None:
+            pearson_values.append(float(pearson))
+        if spearman is not None:
+            spearman_values.append(float(spearman))
+        spread = _top_bottom_spread(frame["prediction"], frame["target"])
+        if spread is not None:
+            spread_values.append(float(spread))
+    return {
+        "cross_sectional_pearson_ic_mean": _mean_or_none(pearson_values),
+        "cross_sectional_pearson_ic_median": _median_or_none(pearson_values),
+        "cross_sectional_pearson_ic_positive_share": _positive_share_or_none(pearson_values),
+        "cross_sectional_rank_ic_mean": _mean_or_none(spearman_values),
+        "cross_sectional_rank_ic_median": _median_or_none(spearman_values),
+        "cross_sectional_rank_ic_positive_share": _positive_share_or_none(spearman_values),
+        "top_bottom_quintile_target_spread_mean": _mean_or_none(spread_values),
+        "top_bottom_quintile_target_spread_median": _median_or_none(spread_values),
+    }
+
+
+def _top_bottom_spread(prediction: pd.Series, target: pd.Series) -> float | None:
+    frame = pd.DataFrame({"prediction": prediction, "target": target}).dropna()
+    if len(frame) < 10:
+        return None
+    ranked = frame.sort_values("prediction", ascending=False)
+    bucket = max(1, len(ranked) // 5)
+    top = ranked.head(bucket)["target"]
+    bottom = ranked.tail(bucket)["target"]
+    if top.empty or bottom.empty:
+        return None
+    return float(top.mean() - bottom.mean())
+
+
+def _safe_corr(left: np.ndarray, right: np.ndarray) -> float | None:
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    if left.size < 2 or right.size < 2 or left.size != right.size:
+        return None
+    if not np.isfinite(left).all() or not np.isfinite(right).all():
+        return None
+    left_std = float(np.std(left, ddof=1))
+    right_std = float(np.std(right, ddof=1))
+    if left_std == 0.0 or right_std == 0.0:
+        return None
+    return float(np.corrcoef(left, right)[0, 1])
+
+
+def _rank_vector(values: np.ndarray) -> np.ndarray:
+    return pd.Series(values, dtype=float).rank(method="average").to_numpy(dtype=float)
+
+
+def _mean_or_none(values: list[float]) -> float | None:
+    return None if not values else float(np.mean(values))
+
+
+def _median_or_none(values: list[float]) -> float | None:
+    return None if not values else float(np.median(values))
+
+
+def _positive_share_or_none(values: list[float]) -> float | None:
+    return None if not values else float(np.mean([value > 0 for value in values]))
