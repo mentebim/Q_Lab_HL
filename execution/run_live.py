@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from execution.exchange_hl import HyperliquidExecutionClient, VenueConfig
-from execution.portfolio_live import build_trade_instructions, summarize_instructions
+from execution.portfolio_live import build_trade_instructions, prioritize_instructions, summarize_instructions
 from execution.risk import kill_switch_active, validate_target_weights
 from execution.state import load_state, record_run, save_state, seen_signal_bar
 from q_lab_hl.backtest import load_strategy
@@ -82,11 +82,12 @@ def main() -> None:
         max_single_order_notional_usd=venue.max_single_order_notional_usd,
         target_gross_notional_usd=venue.target_gross_notional_usd,
     )
+    ordered_instructions = prioritize_instructions(instructions)
     if args.dry_run_orders:
-        fills = [{"coin": item.coin, "status": item.status, "reason": item.reason} for item in instructions]
+        fills = [{"coin": item.coin, "status": item.status, "reason": item.reason} for item in ordered_instructions]
         next_state = dict(state)
     else:
-        fills, next_state = client.apply_instructions(instructions, state)
+        fills, next_state = client.apply_instructions(ordered_instructions, state)
 
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -97,7 +98,7 @@ def main() -> None:
         "source": champion.get("source", {}),
         "target_weights": {coin: float(weight) for coin, weight in pd.Series(target, dtype=float).items()},
         "prices": {coin: float(price) for coin, price in prices.items()},
-        "instructions": [item.summary() for item in instructions],
+        "instructions": [item.summary() for item in ordered_instructions],
         "instruction_summary": summarize_instructions(instructions),
         "fills": fills,
         "dry_run_orders": bool(args.dry_run_orders),

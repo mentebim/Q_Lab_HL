@@ -115,40 +115,70 @@ class HyperliquidExecutionClient:
             if leverage_response is not None:
                 fills.append({"coin": instruction.coin, "status": "set_leverage", "leverage": leverage, "response": leverage_response})
             if instruction.current_size != 0.0 and instruction.target_size == 0.0:
-                response = self._exchange.market_close(
-                    instruction.coin,
-                    sz=abs(instruction.current_size),
-                    px=instruction.price,
-                    slippage=self.venue.slippage,
-                )
+                response = self._submit_close(instruction.coin, abs(instruction.current_size), instruction.price)
                 fills.append({"coin": instruction.coin, "status": "submitted_close", "response": response})
                 continue
             if instruction.current_size * instruction.target_size < 0.0 and instruction.current_size != 0.0:
-                close_response = self._exchange.market_close(
-                    instruction.coin,
-                    sz=abs(instruction.current_size),
-                    px=instruction.price,
-                    slippage=self.venue.slippage,
-                )
+                close_response = self._submit_close(instruction.coin, abs(instruction.current_size), instruction.price)
                 fills.append({"coin": instruction.coin, "status": "submitted_close", "response": close_response})
-                open_response = self._exchange.market_open(
+                open_response = self._submit_open_with_retry(
                     instruction.coin,
                     is_buy=instruction.target_size > 0.0,
                     sz=abs(instruction.target_size),
                     px=instruction.price,
                     slippage=self.venue.slippage,
+                    size_decimals=getattr(instruction, 'size_decimals', 4),
                 )
                 fills.append({"coin": instruction.coin, "status": "submitted_open", "response": open_response})
                 continue
-            response = self._exchange.market_open(
+            response = self._submit_open_with_retry(
                 instruction.coin,
                 is_buy=instruction.delta_size > 0.0,
                 sz=abs(instruction.delta_size),
                 px=instruction.price,
                 slippage=self.venue.slippage,
+                size_decimals=getattr(instruction, 'size_decimals', 4),
             )
             fills.append({"coin": instruction.coin, "status": "submitted_delta", "response": response})
         return fills, dict(state)
+
+
+    def _submit_close(self, coin: str, sz: float, px: float):
+        return self._exchange.market_close(coin, sz=abs(sz), px=px, slippage=self.venue.slippage)
+
+    def _submit_open_with_retry(self, coin: str, *, is_buy: bool, sz: float, px: float, slippage: float, size_decimals: int):
+        attempt_size = float(sz)
+        responses = []
+        for drop in range(0, min(int(size_decimals), 4) + 1):
+            adj_decimals = max(int(size_decimals) - drop, 0)
+            attempt_size = self._round_toward_zero(attempt_size, adj_decimals)
+            if attempt_size <= 0:
+                continue
+            resp = self._exchange.market_open(coin, is_buy=is_buy, sz=attempt_size, px=px, slippage=slippage)
+            responses.append({'size': attempt_size, 'response': resp})
+            if not self._response_has_error(resp):
+                return {'attempts': responses, 'final_size': attempt_size}
+        return {'attempts': responses, 'error': 'all_attempts_failed'}
+
+    def _response_has_error(self, response) -> bool:
+        payload = response.get('response') if isinstance(response, dict) else None
+        if isinstance(payload, str):
+            return True
+        statuses = (((payload or {}).get('data') or {}).get('statuses')) if isinstance(payload, dict) else None
+        if not statuses:
+            return False
+        for item in statuses:
+            if 'error' in item:
+                return True
+        return False
+
+    def _round_toward_zero(self, value: float, decimals: int) -> float:
+        factor = 10 ** int(decimals)
+        if factor <= 0:
+            return float(value)
+        if value >= 0:
+            return float(int(value * factor) / factor)
+        return float(-int(abs(value) * factor) / factor)
 
     def _desired_leverage(self, coin: str) -> int:
         leverage = int(self.venue.leverage_overrides.get(coin, self.venue.default_leverage))

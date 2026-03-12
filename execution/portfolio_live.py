@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from itertools import zip_longest
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,7 @@ class TradeInstruction:
     side: str
     status: str
     reason: str = ""
+    size_decimals: int = 4
 
     def summary(self) -> dict:
         return asdict(self)
@@ -72,6 +74,7 @@ def build_trade_instructions(
                 side=side,
                 status=status,
                 reason=reason,
+                size_decimals=int(size_decimals.get(coin, 4)),
             )
         )
     return instructions
@@ -98,3 +101,38 @@ def _round_toward_zero(value: float, decimals: int) -> float:
     if value >= 0.0:
         return float(np.floor(value * factor) / factor)
     return float(np.ceil(value * factor) / factor)
+
+
+def prioritize_instructions(instructions: list[TradeInstruction]) -> list[TradeInstruction]:
+    items = list(instructions)
+    risk_reducing = [item for item in items if item.status == "trade" and _is_risk_reducing(item)]
+    risk_adding = [item for item in items if item.status == "trade" and not _is_risk_reducing(item)]
+    deferred = [item for item in items if item.status != "trade"]
+    ordered = _pairwise_by_side(risk_reducing) + _pairwise_by_side(risk_adding)
+    return ordered + deferred
+
+
+def _is_risk_reducing(item: TradeInstruction) -> bool:
+    if item.current_size == 0.0:
+        return False
+    if item.target_size == 0.0:
+        return True
+    if item.current_size * item.target_size < 0.0:
+        return True
+    return abs(item.target_size) < abs(item.current_size)
+
+
+def _pairwise_by_side(items: list[TradeInstruction]) -> list[TradeInstruction]:
+    longs = sorted([i for i in items if i.delta_size > 0], key=lambda x: abs(x.delta_notional_usd), reverse=True)
+    shorts = sorted([i for i in items if i.delta_size < 0], key=lambda x: abs(x.delta_notional_usd), reverse=True)
+    out: list[TradeInstruction] = []
+    while longs or shorts:
+        next_long = longs.pop(0) if longs else None
+        next_short = shorts.pop(0) if shorts else None
+        choices = [x for x in (next_long, next_short) if x is not None]
+        if len(choices) == 2 and abs(choices[1].delta_notional_usd) > abs(choices[0].delta_notional_usd):
+            out.append(choices[1]); out.append(choices[0])
+        else:
+            if next_long is not None: out.append(next_long)
+            if next_short is not None: out.append(next_short)
+    return out
