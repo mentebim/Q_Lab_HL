@@ -26,6 +26,7 @@ class VenueConfig:
     max_data_lag_hours: float = 3.0
     default_leverage: int = 2
     leverage_overrides: dict[str, int] = field(default_factory=lambda: {"BTC": 3, "ETH": 3})
+    target_gross_notional_usd: float | None = None
 
     def base_url(self) -> str:
         return TESTNET_API_URL if self.network == "testnet" else MAINNET_API_URL

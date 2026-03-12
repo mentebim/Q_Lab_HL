@@ -80,6 +80,7 @@ def main() -> None:
         size_decimals=size_decimals,
         min_trade_notional_usd=venue.min_trade_notional_usd,
         max_single_order_notional_usd=venue.max_single_order_notional_usd,
+        target_gross_notional_usd=venue.target_gross_notional_usd,
     )
     if args.dry_run_orders:
         fills = [{"coin": item.coin, "status": item.status, "reason": item.reason} for item in instructions]

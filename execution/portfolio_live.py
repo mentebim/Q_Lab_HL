@@ -33,17 +33,19 @@ def build_trade_instructions(
     size_decimals: dict[str, int],
     min_trade_notional_usd: float,
     max_single_order_notional_usd: float,
+    target_gross_notional_usd: float | None = None,
 ) -> list[TradeInstruction]:
     weights = pd.Series(target_weights, dtype=float)
     mids = pd.Series(prices, dtype=float)
     instructions: list[TradeInstruction] = []
+    gross_target_base = float(target_gross_notional_usd) if target_gross_notional_usd is not None else float(account_value)
     coins = sorted(set(weights.index) | set(current_positions) | set(mids.index))
     for coin in coins:
         price = float(mids.get(coin, np.nan))
         if not np.isfinite(price) or price <= 0.0:
             continue
         current_size = float(current_positions.get(coin, 0.0))
-        target_notional = float(weights.get(coin, 0.0) * account_value)
+        target_notional = float(weights.get(coin, 0.0) * gross_target_base)
         target_size = _round_toward_zero(target_notional / price, size_decimals.get(coin, 4))
         delta_size = _round_toward_zero(target_size - current_size, size_decimals.get(coin, 4))
         current_notional = current_size * price

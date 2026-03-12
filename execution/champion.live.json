@@ -56,11 +56,17 @@
     "secret_key_env": "HL_SECRET_KEY",
     "paper_account_value": 250.0,
     "min_trade_notional_usd": 10.0,
-    "max_single_order_notional_usd": 40.0,
+    "max_single_order_notional_usd": 250.0,
     "slippage": 0.01,
     "state_path": "execution/state.live.json",
     "log_dir": "execution/logs/live",
     "kill_switch_path": "execution/STOP",
-    "max_data_lag_hours": 3.0
+    "max_data_lag_hours": 3.0,
+    "target_gross_notional_usd": 1000.0,
+    "default_leverage": 2,
+    "leverage_overrides": {
+      "BTC": 3,
+      "ETH": 3
+    }
   }
 }
