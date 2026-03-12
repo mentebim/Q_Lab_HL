@@ -51,7 +51,7 @@
   "live": {
     "mode": "live",
     "network": "mainnet",
-    "account_address": "REPLACE_ME_HL_ACCOUNT",
+    "account_address": "0x70020BdEa6be894f6511d7cC0529ff1D73B51086",
     "vault_address": null,
     "secret_key_env": "HL_SECRET_KEY",
     "paper_account_value": 10000.0,
