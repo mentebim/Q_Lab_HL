@@ -164,7 +164,7 @@ class DataStore:
 
     def market_return_series(self, timestamps: pd.DatetimeIndex) -> pd.Series:
         close = self.close.reindex(timestamps)
-        market = close.pct_change().mean(axis=1).fillna(0.0)
+        market = close.pct_change(fill_method=None).mean(axis=1).fillna(0.0)
         return market.reindex(timestamps).fillna(0.0)
 
     def zscore_cross_section(self, values: pd.Series) -> pd.Series:
@@ -283,4 +283,3 @@ def _slice_frame(frame: pd.DataFrame, assets, start, end) -> pd.DataFrame:
     if end is not None:
         out = out.loc[out.index <= pd.Timestamp(end)]
     return out
-

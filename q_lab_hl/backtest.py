@@ -167,13 +167,14 @@ def _filter_tradeable_target(
     if filtered.empty:
         return pd.Series(dtype=float), filtered_assets
     groups = pd.Series({asset: data_store.sector(asset) for asset in filtered.index})
+    use_group_caps = groups.nunique(dropna=True) > 1
     normalized = normalize_long_short_weights(
         filtered,
         gross_target=min(execution.target_gross_exposure, execution.max_gross_exposure),
         net_target=execution.target_net_exposure,
         max_abs_weight=execution.max_abs_weight,
-        groups=groups,
-        max_group_gross=execution.max_group_gross,
+        groups=groups if use_group_caps else None,
+        max_group_gross=execution.max_group_gross if use_group_caps else None,
     )
     return normalized, filtered_assets
 
@@ -188,4 +189,3 @@ def _turnover(old_weights: pd.Series, new_weights: pd.Series) -> float:
             - new_weights.reindex(names).fillna(0.0).to_numpy()
         ).sum()
     )
-

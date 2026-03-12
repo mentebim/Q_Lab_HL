@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from q_lab_hl.audit import bootstrap_sharpe_ci, summarize_trial_family
 from q_lab_hl.backtest import BacktestResult, run_backtest, strategy_warmup_timestamps
 from q_lab_hl.config import ExecutionConfig, SplitConfig
 from q_lab_hl.data import DataStore
@@ -109,8 +108,6 @@ def evaluate(
     data_store: DataStore,
     period: str,
     execution: ExecutionConfig | None = None,
-    family_matrix: pd.DataFrame | None = None,
-    candidate_id: str | None = None,
 ) -> dict:
     execution = execution or ExecutionConfig()
     usable_index = strategy_warmup_timestamps(data_store, execution)
@@ -124,8 +121,6 @@ def evaluate(
         timestamps=period_index,
         execution=execution,
         period_label=period,
-        family_matrix=family_matrix,
-        candidate_id=candidate_id,
     )
 
 
@@ -135,8 +130,6 @@ def evaluate_timestamps(
     timestamps: pd.DatetimeIndex,
     execution: ExecutionConfig | None = None,
     period_label: str = "custom",
-    family_matrix: pd.DataFrame | None = None,
-    candidate_id: str | None = None,
 ) -> dict:
     execution = execution or ExecutionConfig()
     if len(timestamps) == 0:
@@ -168,14 +161,6 @@ def evaluate_timestamps(
     score, parts = inner_objective(result, execution.bars_per_year)
     metrics["score_inner"] = score
     metrics.update(parts)
-    if period_label not in {"train", "inner"} or family_matrix is not None or candidate_id is not None:
-        audit = summarize_trial_family(
-            family_matrix if family_matrix is not None else pd.DataFrame(),
-            result.active_returns,
-            execution.bars_per_year,
-            candidate_id=candidate_id,
-        )
-        metrics.update(audit)
     return metrics
 
 
@@ -203,11 +188,6 @@ def format_metrics(metrics: dict) -> str:
         "concentration_penalty",
         "instability_penalty",
         "candidate_id",
-        "promotion_status",
-        "failed_checks",
-        "DSR",
-        "N_eff",
-        "bootstrap_sharpe_ci",
     ]
     lines = []
     for key in ordered:
@@ -226,3 +206,17 @@ def _share(part: float, total: float) -> float:
         return 0.0
     return float(part / total)
 
+
+def bootstrap_sharpe_ci(returns: pd.Series, bars_per_year: int, n_boot: int = 200, seed: int = 7) -> tuple[float, float]:
+    series = pd.Series(returns, dtype=float).dropna()
+    if len(series) < 2:
+        return 0.0, 0.0
+    rng = np.random.default_rng(seed)
+    values = series.to_numpy(dtype=float)
+    draws = []
+    for _ in range(n_boot):
+        sample = rng.choice(values, size=len(values), replace=True)
+        std = float(np.std(sample, ddof=1))
+        draws.append(0.0 if std == 0.0 else float(np.mean(sample) / std * np.sqrt(bars_per_year)))
+    low, high = np.percentile(draws, [5, 95])
+    return float(low), float(high)

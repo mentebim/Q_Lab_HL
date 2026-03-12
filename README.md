@@ -1,28 +1,51 @@
 # Q_Lab_HL
 
-This repo is now a single-purpose Hyperliquid research harness for long/short statistical arbitrage.
+Q_Lab_HL is now a minimal statistical Hyperliquid research harness.
 
-The working layout is:
+The repo is intentionally narrow:
 
-- `strategy.py`: editable research surface
-- `run.py`: CLI for cache build, backtest, audit, and CV search
-- `q_lab_hl/`: fixed harness modules
-- `data/market_cache_1h/`: real 1-hour Hyperliquid cache
-- `tests/`: regression tests
-- `artifacts/`, `registries/`: generated outputs
+- data layer: parquet market panels and tradability rules
+- strategy layer: feature engineering plus a trainable statistical model
+- judge layer: deterministic next-bar backtest and period evaluation
+- experiment layer: JSON result files and a flat leaderboard
+
+## Core Layout
+
+- `strategy.py`: editable statistical strategy surface
+- `strategy_model.py`: small helper for feature generation, dataset building, and linear-model fitting
+- `run.py`: manual CLI for cache build and single-period evaluation
+- `autoresearch.py`: deterministic bounded experiment runner
+- `q_lab_hl/`: fixed data, execution, portfolio, and evaluation modules
+- `autoresearch/`: experiment config, leaderboard, and result outputs
+- `data/market_cache_1h/`: bundled hourly market cache
 
 ## What Stays Fixed
 
 - next-bar execution only
+- funding, fees, and slippage included in PnL
+- tradability constraints are part of truth
 - long/short gross and net exposure control
-- fees, slippage, and funding in PnL
-- time-series cross-validation with gap, purge, and embargo support
+- split-based out-of-sample evaluation
+
+The harness under `q_lab_hl/` is the judge. Normal research should not modify it.
 
 ## What You Edit
 
-Normal research should change `strategy.py` only.
+Default mutation scope:
 
-## Quick Start
+- `strategy.py`
+- `strategy_model.py`
+- `autoresearch/config*.json`
+
+Default fixed scope:
+
+- `q_lab_hl/data.py`
+- `q_lab_hl/backtest.py`
+- `q_lab_hl/evaluate.py`
+- `q_lab_hl/portfolio.py`
+- `run.py`
+
+## Manual Workflow
 
 Install dependencies:
 
@@ -30,16 +53,16 @@ Install dependencies:
 python3 -m pip install -e .
 ```
 
-Run a synthetic backtest:
+Evaluate the current strategy on the bundled hourly cache:
 
 ```bash
-python3 run.py --synthetic --backtest --period inner
+python3 run.py --evaluate --data-dir data/market_cache_1h --period inner --show-fit
 ```
 
-Run a real-data CV search on the bundled cache:
+Emit the same result as JSON:
 
 ```bash
-python3 run.py --data-dir data/market_cache_1h --grid-search --cv-mode expanding --folds 2 --cv-train-bars 360 --cv-validation-bars 240 --cv-gap-bars 24 --cv-purge-bars 24 --cv-embargo-bars 24 --top-k 5
+python3 run.py --evaluate --data-dir data/market_cache_1h --period outer --json --show-fit
 ```
 
 Rebuild the Hyperliquid cache:
@@ -48,15 +71,91 @@ Rebuild the Hyperliquid cache:
 python3 run.py --build-cache --cache-dir data/market_cache_1h --start 2020-01-01 --timeframe 1h --top-n 20 --no-ssl-verify
 ```
 
-Run the tests:
+## Strategy Workflow
+
+The current strategy is statistical, not threshold-rule based.
+
+Its mutation surface is one explicit config object in `strategy.py`:
+
+- feature list
+- per-feature transform
+- target definition
+- model family and regularization
+- train window
+- position bucket
+
+That same surface can now be supplied from JSON experiment files through:
+
+- `strategy_spec`
+- `execution_overrides`
+
+At each rebalance timestamp it:
+
+1. builds feature rows for tradable assets
+2. constructs a historical training set using only prior bars
+3. fits a small linear model
+4. predicts next-bar scores for the current cross-section
+5. converts those scores into long/short weights
+
+The default feature set is:
+
+- 1h return
+- 6h return
+- 24h return
+- 24h realized volatility
+- 24h moving-average gap
+- 8h mean funding
+
+Supported feature transforms currently include:
+
+- `zscore`
+- `rank`
+- `none`
+
+## Autoresearch Workflow
+
+The bounded experiment loop is:
+
+1. read `RESEARCH_PROMPT.md`, `AUTORESEARCH_RULES.md`, and `autoresearch/config.agent.json`
+2. run `python3 autoresearch.py --config autoresearch/config.agent.json`
+3. parse stdout JSON
+4. inspect `autoresearch/leaderboard.jsonl`
+5. mutate `autoresearch/config.agent.json`, `strategy.py`, or `strategy_model.py`
+6. rerun and compare against the prior result
+
+Example:
 
 ```bash
-python3 -m unittest discover -s tests
+python3 autoresearch.py --config autoresearch/config.agent.json
+```
+
+This is now enough to search the model from JSON alone. Agents do not need to rewrite `strategy.py` just to change:
+
+- features
+- transforms
+- target kind
+- model family
+- regularization
+- position bucket
+- rebalance cadence
+
+Real data is the primary workflow. The command above evaluates the current candidate on the bundled hourly cache in `data/market_cache_1h`, writes a full JSON result under `autoresearch/results/`, and appends a compact summary to `autoresearch/leaderboard.jsonl`.
+
+Optional smoke test with no side effects:
+
+```bash
+python3 autoresearch.py \
+  --config autoresearch/config.agent.json \
+  --synthetic \
+  --no-write-result \
+  --no-append-leaderboard \
+  --experiment-id smoke_stat_model \
+  --candidate-id smoke_stat_model
 ```
 
 ## Data Contract
 
-`run.py --data-dir <dir>` expects matrix parquet files:
+`run.py --data-dir <dir>` and `autoresearch.py` expect matrix parquet files:
 
 - `open.parquet`
 - `high.parquet`
@@ -68,3 +167,18 @@ python3 -m unittest discover -s tests
 - optional `metadata.json`
 
 Each parquet file is a timestamp-indexed asset matrix.
+
+## Prompts
+
+Prompt files are still part of the repo, but they are guidance around the workflow, not runtime components:
+
+- `RESEARCH_PROMPT.md`: human-owned research objective and anti-goals
+- `AUTORESEARCH_RULES.md`: operational edit/run rules for workers
+
+## Tests
+
+Run the suite with:
+
+```bash
+python3 -m unittest discover -s tests
+```

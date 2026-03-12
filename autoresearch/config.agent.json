@@ -1,0 +1,89 @@
+{
+  "experiment_id": "agent_baseline_v1",
+  "candidate_id": "agent_ridge_v1",
+  "hypothesis": "Baseline agent run: ridge model on hourly lagged returns, volatility, moving-average gap, and funding using the fixed Hyperliquid judge.",
+  "strategy_path": "strategy.py",
+  "strategy_spec": {
+    "train_window_bars": 504,
+    "min_train_rows": 200,
+    "position_bucket": 4,
+    "target": {
+      "name": "next_bar_open_to_close",
+      "kind": "next_open_to_close_return"
+    },
+    "model": {
+      "family": "ridge",
+      "l2_reg": 5.0,
+      "prediction_clip": 3.0
+    },
+    "features": [
+      {
+        "name": "ret_1h",
+        "kind": "return",
+        "lookback": 1,
+        "transform": "zscore",
+        "clip": 3.0
+      },
+      {
+        "name": "ret_6h",
+        "kind": "return",
+        "lookback": 6,
+        "transform": "zscore",
+        "clip": 3.0
+      },
+      {
+        "name": "ret_24h",
+        "kind": "return",
+        "lookback": 24,
+        "transform": "zscore",
+        "clip": 3.0
+      },
+      {
+        "name": "vol_24h",
+        "kind": "volatility",
+        "lookback": 24,
+        "transform": "rank"
+      },
+      {
+        "name": "ma_gap_24h",
+        "kind": "ma_gap",
+        "lookback": 24,
+        "transform": "zscore",
+        "clip": 3.0
+      },
+      {
+        "name": "funding_8h",
+        "kind": "funding_mean",
+        "lookback": 8,
+        "transform": "zscore",
+        "clip": 3.0
+      }
+    ]
+  },
+  "execution_overrides": {
+    "rebalance_every_bars": 24
+  },
+  "data_dir": "data/market_cache_1h",
+  "synthetic": false,
+  "evaluation_periods": [
+    "inner",
+    "outer"
+  ],
+  "notes": "First agent-operable baseline config. Copy this file for each new candidate instead of editing the example config.",
+  "acceptance": {
+    "primary_metric": "periods.outer.active_sharpe_annualized",
+    "primary_min": 0.0,
+    "min_active_sharpe": 0.0,
+    "max_beta_abs": 0.15,
+    "max_turnover": 0.75,
+    "compare_to_best": false,
+    "compare_to_candidate_id": null,
+    "min_primary_lift": 0.0
+  },
+  "recording": {
+    "leaderboard_path": "autoresearch/leaderboard.jsonl",
+    "results_dir": "autoresearch/results",
+    "append_leaderboard": true,
+    "write_result": true
+  }
+}
