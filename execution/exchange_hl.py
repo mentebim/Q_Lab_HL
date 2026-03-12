@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+import os
+from dataclasses import asdict, dataclass
+from typing import Any
+
+
+MAINNET_API_URL = "https://api.hyperliquid.xyz"
+TESTNET_API_URL = "https://api.hyperliquid-testnet.xyz"
+
+
+@dataclass(frozen=True)
+class VenueConfig:
+    mode: str = "paper"
+    network: str = "mainnet"
+    account_address: str | None = None
+    vault_address: str | None = None
+    secret_key_env: str = "HL_SECRET_KEY"
+    paper_account_value: float = 10_000.0
+    min_trade_notional_usd: float = 25.0
+    max_single_order_notional_usd: float = 500.0
+    slippage: float = 0.01
+    state_path: str = "execution/state.json"
+    log_dir: str = "execution/logs"
+    kill_switch_path: str = "execution/STOP"
+    max_data_lag_hours: float = 3.0
+
+    def base_url(self) -> str:
+        return TESTNET_API_URL if self.network == "testnet" else MAINNET_API_URL
+
+    def summary(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["base_url"] = self.base_url()
+        return payload
+
+
+class HyperliquidExecutionClient:
+    def __init__(self, venue: VenueConfig):
+        self.venue = venue
+        self._info = None
+        self._exchange = None
+        if venue.mode in {"paper", "live"}:
+            self._info = self._build_info()
+        if venue.mode == "live":
+            self._exchange = self._build_exchange()
+
+    def current_positions(self, state: dict[str, Any]) -> dict[str, float]:
+        if self.venue.mode == "paper":
+            return {coin: float(sz) for coin, sz in state.get("paper_positions", {}).items()}
+        address = self._require_account_address()
+        raw = self._info.user_state(address)
+        positions = {}
+        for row in raw.get("assetPositions", []):
+            position = row.get("position", {})
+            coin = position.get("coin")
+            if not coin:
+                continue
+            positions[coin] = float(position.get("szi", 0.0))
+        return positions
+
+    def account_value(self) -> float:
+        if self.venue.mode == "paper":
+            return float(self.venue.paper_account_value)
+        address = self._require_account_address()
+        raw = self._info.user_state(address)
+        summary = raw.get("marginSummary") or raw.get("crossMarginSummary") or {}
+        return float(summary.get("accountValue", 0.0))
+
+    def mid_prices(self, coins: list[str]) -> dict[str, float]:
+        if self._info is None:
+            return {}
+        mids = self._info.all_mids()
+        return {coin: float(mids[coin]) for coin in coins if coin in mids}
+
+    def apply_instructions(self, instructions, state: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        if self.venue.mode == "paper":
+            return self._apply_paper(instructions, state)
+        return self._apply_live(instructions, state)
+
+    def _apply_paper(self, instructions, state: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        positions = dict(state.get("paper_positions", {}))
+        fills = []
+        for instruction in instructions:
+            if instruction.status != "trade":
+                fills.append({"coin": instruction.coin, "status": instruction.status, "reason": instruction.reason})
+                continue
+            positions[instruction.coin] = instruction.target_size
+            if abs(positions[instruction.coin]) <= 1e-12:
+                positions.pop(instruction.coin, None)
+            fills.append(
+                {
+                    "coin": instruction.coin,
+                    "status": "filled",
+                    "side": instruction.side,
+                    "size": instruction.delta_size,
+                    "price": instruction.price,
+                    "mode": "paper",
+                }
+            )
+        next_state = dict(state)
+        next_state["paper_positions"] = positions
+        return fills, next_state
+
+    def _apply_live(self, instructions, state: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        fills = []
+        for instruction in instructions:
+            if instruction.status != "trade":
+                fills.append({"coin": instruction.coin, "status": instruction.status, "reason": instruction.reason})
+                continue
+            if instruction.current_size != 0.0 and instruction.target_size == 0.0:
+                response = self._exchange.market_close(
+                    instruction.coin,
+                    sz=abs(instruction.current_size),
+                    px=instruction.price,
+                    slippage=self.venue.slippage,
+                )
+                fills.append({"coin": instruction.coin, "status": "submitted_close", "response": response})
+                continue
+            if instruction.current_size * instruction.target_size < 0.0 and instruction.current_size != 0.0:
+                close_response = self._exchange.market_close(
+                    instruction.coin,
+                    sz=abs(instruction.current_size),
+                    px=instruction.price,
+                    slippage=self.venue.slippage,
+                )
+                fills.append({"coin": instruction.coin, "status": "submitted_close", "response": close_response})
+                open_response = self._exchange.market_open(
+                    instruction.coin,
+                    is_buy=instruction.target_size > 0.0,
+                    sz=abs(instruction.target_size),
+                    px=instruction.price,
+                    slippage=self.venue.slippage,
+                )
+                fills.append({"coin": instruction.coin, "status": "submitted_open", "response": open_response})
+                continue
+            response = self._exchange.market_open(
+                instruction.coin,
+                is_buy=instruction.delta_size > 0.0,
+                sz=abs(instruction.delta_size),
+                px=instruction.price,
+                slippage=self.venue.slippage,
+            )
+            fills.append({"coin": instruction.coin, "status": "submitted_delta", "response": response})
+        return fills, dict(state)
+
+    def _build_info(self):
+        try:
+            from hyperliquid.info import Info
+        except ImportError as exc:
+            raise RuntimeError("Install optional execution dependencies with `pip install -e .[execution]`.") from exc
+        return Info(self.venue.base_url(), skip_ws=True)
+
+    def _build_exchange(self):
+        try:
+            from eth_account import Account
+            from hyperliquid.exchange import Exchange
+        except ImportError as exc:
+            raise RuntimeError("Install optional execution dependencies with `pip install -e .[execution]`.") from exc
+        secret = os.environ.get(self.venue.secret_key_env)
+        if not secret:
+            raise RuntimeError(f"Environment variable {self.venue.secret_key_env} is required for live execution.")
+        wallet = Account.from_key(secret)
+        return Exchange(
+            wallet,
+            self.venue.base_url(),
+            account_address=self.venue.account_address,
+            vault_address=self.venue.vault_address,
+        )
+
+    def _require_account_address(self) -> str:
+        address = self.venue.account_address or self.venue.vault_address
+        if not address:
+            raise RuntimeError("`account_address` or `vault_address` is required for paper/live position reconciliation.")
+        return address

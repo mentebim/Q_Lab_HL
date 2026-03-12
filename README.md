@@ -17,6 +17,7 @@ The repo is intentionally narrow:
 - `autoresearch.py`: deterministic bounded experiment runner
 - `q_lab_hl/`: fixed data, execution, portfolio, and evaluation modules
 - `autoresearch/`: experiment config, leaderboard, and result outputs
+- `execution/`: pinned-champion live/paper execution layer
 - `data/market_cache_1h/`: bundled hourly market cache
 
 ## What Stays Fixed
@@ -152,6 +153,23 @@ python3 autoresearch.py \
   --experiment-id smoke_stat_model \
   --candidate-id smoke_stat_model
 ```
+
+## Execution Workflow
+
+The live layer is intentionally thin and separate from research:
+
+1. refresh the trailing market cache
+2. pin one champion strategy
+3. run one paper or live execution cycle
+
+The default command path is:
+
+```bash
+python -m execution.update_cache --data-dir data/market_cache_1h
+python -m execution.run_live --champion execution/champion.json
+```
+
+The execution layer does not auto-trade the top leaderboard row by default. It trades the pinned strategy in `execution/champion.json`.
 
 ## Data Contract
 
