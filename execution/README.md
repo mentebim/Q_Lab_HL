@@ -30,24 +30,30 @@ python -m execution.select_champion --policy best-accepted --out execution/champ
 3. Run one paper execution cycle:
 
 ```bash
-python -m execution.run_live --champion execution/champion.json
+python -m execution.run_live --champion execution/champion.paper.json
 ```
 
-4. Once paper logs look correct, switch `execution/champion.json` to `"mode": "live"` and set:
+4. Run one live execution cycle with the same champion strategy but separate runtime state/logs:
+
+```bash
+python -m execution.run_live --champion execution/champion.live.json
+```
+
+5. Fill these fields before real trading:
 
 - `live.account_address`
 - `live.secret_key_env`
 
-Then rerun the same command.
+The repo now supports parallel paper + live research deployment using the same strategy spec with separate runtime wrappers.
 
 ## AWS deployment notes
 
 For AWS research deployment, keep credentials out of git and inject them at runtime:
 
 - set `HL_SECRET_KEY` as an environment secret
-- set `live.account_address` in `execution/champion.json` or inject a generated champion file at deploy time
-- keep `mode: "paper"` until you are ready to compare paper vs real
-- recommended first live phase: small capital, same champion, same logs, compare realized live vs paper drift
+- set `live.account_address` in both `execution/champion.paper.json` and `execution/champion.live.json` (same address, no vault)
+- keep paper and live separated by config, state file, and log directory
+- recommended first live phase: small capital, same champion, compare realized live vs paper drift
 
 ## Cron / launchd
 
