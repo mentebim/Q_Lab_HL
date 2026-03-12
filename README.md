@@ -129,6 +129,14 @@ Example:
 python3 autoresearch.py --config autoresearch/config.agent.json
 ```
 
+Fast screening pass:
+
+```bash
+python3 autoresearch.py --config autoresearch/config.screening.json
+```
+
+This screening config uses only the most recent window and top liquid names so ideas can be filtered cheaply before spending full runtime on confirmation.
+
 This is now enough to search the model from JSON alone. Agents do not need to rewrite `strategy.py` just to change:
 
 - features

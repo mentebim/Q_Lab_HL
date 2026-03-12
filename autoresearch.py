@@ -17,6 +17,8 @@ def main() -> None:
     parser.add_argument("--execution-overrides", type=str, default=None, help="Path to a JSON file with execution overrides.")
     parser.add_argument("--data-dir", type=str, default=None, help="Override parquet data directory from the config.")
     parser.add_argument("--synthetic", action="store_true", help="Force synthetic data mode.")
+    parser.add_argument("--data-window-bars", type=int, default=None, help="Use only the most recent N bars for a faster screening run.")
+    parser.add_argument("--liquidity-top-n", type=int, default=None, help="Restrict evaluation to the N most liquid assets in the selected window.")
     parser.add_argument("--no-write-result", action="store_true", help="Print JSON only and skip result file output.")
     parser.add_argument("--no-append-leaderboard", action="store_true", help="Skip leaderboard append and family-matrix updates.")
     args = parser.parse_args()
@@ -32,6 +34,8 @@ def main() -> None:
         execution_overrides=_load_optional_json(args.execution_overrides),
         data_dir=args.data_dir,
         synthetic=True if args.synthetic else None,
+        data_window_bars=args.data_window_bars,
+        liquidity_top_n=args.liquidity_top_n,
     )
     result = run_experiment(
         spec,

@@ -1,0 +1,55 @@
+{
+  "experiment_id": "screening_baseline_v1",
+  "candidate_id": "screening_ridge_v1",
+  "hypothesis": "Cheap screening pass on the most recent 90 days and top 12 liquid assets before full confirmation.",
+  "strategy_path": "strategy.py",
+  "strategy_spec": {
+    "train_window_bars": 336,
+    "min_train_rows": 160,
+    "position_bucket": 3,
+    "target": {
+      "name": "next_bar_open_to_close",
+      "kind": "next_open_to_close_return"
+    },
+    "model": {
+      "family": "ridge",
+      "l2_reg": 5.0,
+      "prediction_clip": 3.0
+    },
+    "features": [
+      {"name": "ret_1h", "kind": "return", "lookback": 1, "transform": "zscore", "clip": 3.0},
+      {"name": "ret_6h", "kind": "return", "lookback": 6, "transform": "zscore", "clip": 3.0},
+      {"name": "ret_24h", "kind": "return", "lookback": 24, "transform": "zscore", "clip": 3.0},
+      {"name": "vol_24h", "kind": "volatility", "lookback": 24, "transform": "rank"},
+      {"name": "ma_gap_24h", "kind": "ma_gap", "lookback": 24, "transform": "zscore", "clip": 3.0},
+      {"name": "funding_8h", "kind": "funding_mean", "lookback": 8, "transform": "zscore", "clip": 3.0}
+    ]
+  },
+  "execution_overrides": {
+    "rebalance_every_bars": 24,
+    "min_history_bars": 24,
+    "listing_cooldown_bars": 24
+  },
+  "data_dir": "data/market_cache_1h",
+  "synthetic": false,
+  "evaluation_periods": ["outer"],
+  "data_window_bars": 2160,
+  "liquidity_top_n": 12,
+  "notes": "Fast screening config. Use this to rank ideas cheaply, then rerun survivors on config.agent.json for full confirmation.",
+  "acceptance": {
+    "primary_metric": "periods.outer.active_sharpe_annualized",
+    "primary_min": 0.0,
+    "min_active_sharpe": 0.0,
+    "max_beta_abs": 0.20,
+    "max_turnover": 0.90,
+    "compare_to_best": false,
+    "compare_to_candidate_id": null,
+    "min_primary_lift": 0.0
+  },
+  "recording": {
+    "leaderboard_path": "autoresearch/leaderboard.jsonl",
+    "results_dir": "autoresearch/results",
+    "append_leaderboard": true,
+    "write_result": true
+  }
+}

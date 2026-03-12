@@ -5,7 +5,8 @@ This directory is the thin machine-operable layer on top of the fixed Hyperliqui
 ## Files
 
 - `config.example.json`: example bounded experiment spec
-- `config.agent.json`: default real-data candidate spec to copy and mutate
+- `config.agent.json`: default full real-data candidate spec to copy and mutate
+- `config.screening.json`: cheap screening pass on a recent/liquid subset before full confirmation
 - `leaderboard.jsonl`: append-only experiment summary log
 - `results/`: detailed per-run JSON outputs, ignored by git
 
@@ -19,7 +20,9 @@ This directory is the thin machine-operable layer on top of the fixed Hyperliqui
 5. Mutate the candidate config or strategy.
 6. Decide whether to keep iterating, commit, or abandon the branch.
 
-The bundled `config.agent.json` is the default real-data experiment: evaluate the current model on the hourly parquet cache, record the result, and keep the experiment metadata in flat files.
+The bundled `config.agent.json` is the default full real-data experiment: evaluate the current model on the full hourly parquet cache, record the result, and keep the experiment metadata in flat files.
+
+The bundled `config.screening.json` is the fast filter: it evaluates only the recent tail of the dataset and the most liquid assets so the worker can discard weak ideas quickly before rerunning survivors on the full config.
 
 ## Design Notes
 

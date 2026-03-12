@@ -52,6 +52,8 @@ class ExperimentSpec:
     data_dir: str = "data/market_cache_1h"
     synthetic: bool = False
     evaluation_periods: tuple[str, ...] = ("inner", "outer")
+    data_window_bars: int | None = None
+    liquidity_top_n: int | None = None
     notes: str = ""
     acceptance: AcceptancePolicy = AcceptancePolicy()
     recording: RecordingConfig = RecordingConfig()
@@ -69,6 +71,8 @@ def load_experiment_spec(path: str | Path) -> ExperimentSpec:
         data_dir=str(payload.get("data_dir") or ExperimentSpec.data_dir),
         synthetic=bool(payload.get("synthetic", False)),
         evaluation_periods=tuple(payload.get("evaluation_periods", ExperimentSpec.evaluation_periods)),
+        data_window_bars=None if payload.get("data_window_bars") is None else int(payload.get("data_window_bars")),
+        liquidity_top_n=None if payload.get("liquidity_top_n") is None else int(payload.get("liquidity_top_n")),
         notes=str(payload.get("notes") or ""),
         acceptance=AcceptancePolicy(**payload.get("acceptance", {})),
         recording=RecordingConfig(**payload.get("recording", {})),
@@ -86,6 +90,8 @@ def override_spec(
     execution_overrides: dict[str, Any] | None = None,
     data_dir: str | None = None,
     synthetic: bool | None = None,
+    data_window_bars: int | None = None,
+    liquidity_top_n: int | None = None,
 ) -> ExperimentSpec:
     updates = {}
     if experiment_id is not None:
@@ -104,6 +110,10 @@ def override_spec(
         updates["data_dir"] = data_dir
     if synthetic is not None:
         updates["synthetic"] = synthetic
+    if data_window_bars is not None:
+        updates["data_window_bars"] = int(data_window_bars)
+    if liquidity_top_n is not None:
+        updates["liquidity_top_n"] = int(liquidity_top_n)
     return replace(spec, **updates)
 
 
@@ -119,7 +129,7 @@ def run_experiment(
     if hasattr(strategy, "apply_runtime_overrides"):
         strategy.apply_runtime_overrides(strategy_spec=spec.strategy_spec, execution_overrides=spec.execution_overrides)
     execution = getattr(strategy, "EXECUTION", ExecutionConfig())
-    data_store = data_store or _load_data_store(spec)
+    data_store = _apply_data_scope(data_store or _load_data_store(spec), spec)
     leaderboard = load_leaderboard(spec.recording.leaderboard_path)
     result: dict[str, Any] = {
         "timestamp": now_utc_iso(),
@@ -135,6 +145,8 @@ def run_experiment(
             "path": None if spec.synthetic else spec.data_dir,
             "bars": len(data_store.index),
             "assets": len(data_store.assets),
+            "data_window_bars": spec.data_window_bars,
+            "liquidity_top_n": spec.liquidity_top_n,
         },
         "execution": _jsonable(asdict(execution)),
         "spec": experiment_spec_to_dict(spec),
@@ -337,6 +349,22 @@ def _load_data_store(spec: ExperimentSpec) -> DataStore:
     if spec.synthetic:
         return DataStore.synthetic(n_assets=16, periods=24 * 25, seed=7)
     return DataStore.from_parquet_dir(spec.data_dir)
+
+
+def _apply_data_scope(store: DataStore, spec: ExperimentSpec) -> DataStore:
+    if spec.data_window_bars is not None:
+        if spec.data_window_bars <= 0:
+            raise ValueError("data_window_bars must be positive when provided")
+        if len(store.index) > int(spec.data_window_bars):
+            start = store.index[len(store.index) - int(spec.data_window_bars)]
+            store = store.subset(start=start)
+    if spec.liquidity_top_n is not None:
+        if spec.liquidity_top_n <= 0:
+            raise ValueError("liquidity_top_n must be positive when provided")
+        liquidity = (store.close * store.volume).median().sort_values(ascending=False)
+        assets = list(liquidity.head(int(spec.liquidity_top_n)).index)
+        store = store.subset(assets=assets)
+    return store
 
 
 def _jsonable(value: Any) -> Any:

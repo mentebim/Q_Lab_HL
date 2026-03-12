@@ -319,15 +319,19 @@ def _empty_dataset(feature_specs: tuple[FeatureSpec, ...]) -> dict:
 
 
 def _get_cached_frames(base_store, feature_specs: tuple[FeatureSpec, ...], target_spec: TargetSpec) -> dict:
+    close = base_store.prices(field="close")
     key = (
         id(base_store),
+        tuple(close.columns),
+        len(close.index),
+        None if close.empty else str(close.index[0]),
+        None if close.empty else str(close.index[-1]),
         tuple((spec.name, spec.kind, spec.lookback) for spec in feature_specs),
         target_spec.kind,
     )
     cached = _FRAME_CACHE.get(key)
     if cached is not None:
         return cached
-    close = base_store.prices(field="close")
     open_ = base_store.prices(field="open")
     funding = base_store.funding()
     feature_frames = _build_feature_frames(close, funding, feature_specs)

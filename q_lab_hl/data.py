@@ -97,6 +97,32 @@ class DataStore:
             )
         )
 
+    def subset(self, start=None, end=None, assets: list[str] | None = None) -> "DataStore":
+        start_ts = None if start is None else pd.Timestamp(start)
+        end_ts = None if end is None else pd.Timestamp(end)
+        asset_list = self.assets if assets is None else [asset for asset in assets if asset in self.assets]
+        index_mask = pd.Series(True, index=self.index)
+        if start_ts is not None:
+            index_mask &= self.index >= start_ts
+        if end_ts is not None:
+            index_mask &= self.index <= end_ts
+        index = self.index[index_mask]
+        metadata = {asset: self.metadata.get(asset, {}) for asset in asset_list}
+        return DataStore(
+            MarketPanels(
+                open=self.open.loc[index, asset_list],
+                high=self.high.loc[index, asset_list],
+                low=self.low.loc[index, asset_list],
+                close=self.close.loc[index, asset_list],
+                volume=self.volume.loc[index, asset_list],
+                funding=self.funding_panel.loc[index, asset_list],
+                open_interest=self.oi_panel.loc[index, asset_list],
+                tradable=self.tradable_panel.loc[index, asset_list],
+                metadata=metadata,
+                trades=self.trades_panel.loc[index, asset_list],
+            )
+        )
+
     def prices(
         self,
         assets: list[str] | pd.Index | None = None,
