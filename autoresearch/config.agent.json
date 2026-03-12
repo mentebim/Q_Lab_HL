@@ -1,19 +1,19 @@
 {
-  "experiment_id": "agent_baseline_v1",
-  "candidate_id": "agent_ridge_v1",
-  "hypothesis": "Baseline agent run: ridge model on hourly lagged returns, volatility, moving-average gap, and funding using the fixed Hyperliquid judge.",
+  "experiment_id": "exp_ols_rank_b5_3f_best",
+  "candidate_id": "ols_rank_b5_3f",
+  "hypothesis": "Best candidate from overnight search: OLS with 3 rank-transformed features (1h reversal, 24h mean-reversion, 8h funding carry), position_bucket=5. Outer active Sharpe +1.259, beta 0.014, turnover 0.289.",
   "strategy_path": "strategy.py",
   "strategy_spec": {
     "train_window_bars": 504,
     "min_train_rows": 200,
-    "position_bucket": 4,
+    "position_bucket": 5,
     "target": {
       "name": "next_bar_open_to_close",
       "kind": "next_open_to_close_return"
     },
     "model": {
-      "family": "ridge",
-      "l2_reg": 5.0,
+      "family": "ols",
+      "l2_reg": 0.0,
       "prediction_clip": 3.0
     },
     "features": [
@@ -21,42 +21,19 @@
         "name": "ret_1h",
         "kind": "return",
         "lookback": 1,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "ret_6h",
-        "kind": "return",
-        "lookback": 6,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "ret_24h",
-        "kind": "return",
-        "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "vol_24h",
-        "kind": "volatility",
-        "lookback": 24,
         "transform": "rank"
       },
       {
         "name": "ma_gap_24h",
         "kind": "ma_gap",
         "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
+        "transform": "rank"
       },
       {
         "name": "funding_8h",
         "kind": "funding_mean",
         "lookback": 8,
-        "transform": "zscore",
-        "clip": 3.0
+        "transform": "rank"
       }
     ]
   },
@@ -69,7 +46,7 @@
     "inner",
     "outer"
   ],
-  "notes": "First agent-operable baseline config. Copy this file for each new candidate instead of editing the example config.",
+  "notes": "Best candidate from overnight autoresearch session. OLS 3-feature rank model.",
   "acceptance": {
     "primary_metric": "periods.outer.active_sharpe_annualized",
     "primary_min": 0.0,
