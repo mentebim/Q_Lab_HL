@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -24,6 +24,8 @@ class VenueConfig:
     log_dir: str = "execution/logs"
     kill_switch_path: str = "execution/STOP"
     max_data_lag_hours: float = 3.0
+    default_leverage: int = 2
+    leverage_overrides: dict[str, int] = field(default_factory=lambda: {"BTC": 3, "ETH": 3})
 
     def base_url(self) -> str:
         return TESTNET_API_URL if self.network == "testnet" else MAINNET_API_URL
@@ -107,6 +109,10 @@ class HyperliquidExecutionClient:
             if instruction.status != "trade":
                 fills.append({"coin": instruction.coin, "status": instruction.status, "reason": instruction.reason})
                 continue
+            leverage = self._desired_leverage(instruction.coin)
+            leverage_response = self._set_leverage(instruction.coin, leverage)
+            if leverage_response is not None:
+                fills.append({"coin": instruction.coin, "status": "set_leverage", "leverage": leverage, "response": leverage_response})
             if instruction.current_size != 0.0 and instruction.target_size == 0.0:
                 response = self._exchange.market_close(
                     instruction.coin,
@@ -142,6 +148,18 @@ class HyperliquidExecutionClient:
             )
             fills.append({"coin": instruction.coin, "status": "submitted_delta", "response": response})
         return fills, dict(state)
+
+    def _desired_leverage(self, coin: str) -> int:
+        leverage = int(self.venue.leverage_overrides.get(coin, self.venue.default_leverage))
+        return max(1, leverage)
+
+    def _set_leverage(self, coin: str, leverage: int):
+        if self._exchange is None or self.venue.mode != "live":
+            return None
+        try:
+            return self._exchange.update_leverage(leverage, coin, is_cross=True)
+        except Exception as exc:
+            return {"error": str(exc), "coin": coin, "requested_leverage": leverage}
 
     def _build_info(self):
         try:
