@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.stackcapital.q_lab_hl.papertrade</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/stackcapital/.openclaw/workspace/Q_Lab_HL_worker_01</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>./scripts/run_paper_trade.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Minute</key>
+      <integer>5</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/stackcapital/.openclaw/workspace/Q_Lab_HL_worker_01/paper/paper_trade.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/stackcapital/.openclaw/workspace/Q_Lab_HL_worker_01/paper/paper_trade.err.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+  </dict>
+</plist>

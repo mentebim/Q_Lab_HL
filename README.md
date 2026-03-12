@@ -103,6 +103,12 @@ Install an hourly cron job for paper trading refresh:
 ./scripts/install_paper_trade_cron.sh
 ```
 
+Preferred on macOS: install the `launchd` job:
+
+```bash
+./scripts/install_paper_trade_launchd.sh
+```
+
 ## Fit Diagnostics That Matter More Than p-values
 
 The latest fit summary now includes:
