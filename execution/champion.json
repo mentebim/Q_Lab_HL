@@ -1,22 +1,23 @@
 {
   "source": {
     "policy": "manual",
-    "experiment_id": "agent_baseline_v1",
-    "candidate_id": "agent_ridge_v1",
-    "result_path": "autoresearch/results/2026-03-12T00_11_54.936328_00_00_agent_baseline_v1_rejected.json"
+    "experiment_id": "exp_rank_b5_ols",
+    "candidate_id": "ols_rank_b5_3f",
+    "result_path": "autoresearch/results/2026-03-12T04_34_11.957371_00_00_exp_rank_b5_ols_accepted.json",
+    "note": "Research deployment candidate selected from overnight winner1 run"
   },
   "strategy_path": "strategy.py",
   "strategy_spec": {
     "train_window_bars": 504,
     "min_train_rows": 200,
-    "position_bucket": 4,
+    "position_bucket": 5,
     "target": {
       "name": "next_bar_open_to_close",
       "kind": "next_open_to_close_return"
     },
     "model": {
-      "family": "ridge",
-      "l2_reg": 5.0,
+      "family": "ols",
+      "l2_reg": 0.0,
       "prediction_clip": 3.0
     },
     "features": [
@@ -24,42 +25,22 @@
         "name": "ret_1h",
         "kind": "return",
         "lookback": 1,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "ret_6h",
-        "kind": "return",
-        "lookback": 6,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "ret_24h",
-        "kind": "return",
-        "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "vol_24h",
-        "kind": "volatility",
-        "lookback": 24,
-        "transform": "rank"
+        "transform": "rank",
+        "clip": null
       },
       {
         "name": "ma_gap_24h",
         "kind": "ma_gap",
         "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
+        "transform": "rank",
+        "clip": null
       },
       {
         "name": "funding_8h",
         "kind": "funding_mean",
         "lookback": 8,
-        "transform": "zscore",
-        "clip": 3.0
+        "transform": "rank",
+        "clip": null
       }
     ]
   },

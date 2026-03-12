@@ -40,6 +40,15 @@ python -m execution.run_live --champion execution/champion.json
 
 Then rerun the same command.
 
+## AWS deployment notes
+
+For AWS research deployment, keep credentials out of git and inject them at runtime:
+
+- set `HL_SECRET_KEY` as an environment secret
+- set `live.account_address` in `execution/champion.json` or inject a generated champion file at deploy time
+- keep `mode: "paper"` until you are ready to compare paper vs real
+- recommended first live phase: small capital, same champion, same logs, compare realized live vs paper drift
+
 ## Cron / launchd
 
 For hourly cron use two steps, not one:

@@ -16,9 +16,10 @@ class StatisticalStrategyTests(unittest.TestCase):
         self.assertGreaterEqual(len(scores), 8)
         self.assertTrue(scores.is_monotonic_decreasing)
         summary = strategy.last_fit_summary()
-        self.assertEqual(summary["model_fit"]["family"], "ridge")
+        self.assertEqual(summary["model_fit"]["family"], "ols")
         self.assertGreater(summary["model_fit"]["n_train_rows"], 0)
-        self.assertIn("ret_6h", summary["model_fit"]["coefficients"])
+        self.assertIn("funding_8h", summary["model_fit"]["coefficients"])
+        self.assertIn("diagnostics", summary["model_fit"])
         self.assertEqual(summary["strategy_spec"]["target"]["kind"], "next_open_to_close_return")
 
 
