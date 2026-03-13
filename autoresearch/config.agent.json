@@ -3,6 +3,8 @@
   "candidate_id": "agent_ridge_v1",
   "hypothesis": "Baseline agent run: ridge model on hourly lagged returns, volatility, moving-average gap, and funding using the fixed Hyperliquid judge.",
   "strategy_path": "strategy.py",
+  "strategy_family": "linear_cross_section_v1",
+  "research_policy_path": "autoresearch/research_policy.json",
   "strategy_spec": {
     "train_window_bars": 504,
     "min_train_rows": 200,
@@ -70,6 +72,18 @@
     "outer"
   ],
   "notes": "First agent-operable baseline config. Copy this file for each new candidate instead of editing the example config.",
+  "express_filter": {
+    "enabled": true,
+    "period": "outer",
+    "trailing_bars": 1440,
+    "max_assets": 12,
+    "bootstrap_samples": 50,
+    "primary_metric": "score_inner",
+    "primary_min": -1.0,
+    "min_active_sharpe": -0.25,
+    "max_beta_abs": 0.25,
+    "max_turnover": 1.0
+  },
   "acceptance": {
     "primary_metric": "periods.outer.active_sharpe_annualized",
     "primary_min": 0.0,

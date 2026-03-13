@@ -59,6 +59,39 @@ class BacktestTests(unittest.TestCase):
         self.assertAlmostEqual(float(result.returns.iloc[0]), 0.0, places=9)
         self.assertAlmostEqual(float(result.price_pnl.iloc[1]), 0.05, places=9)
         self.assertAlmostEqual(float(result.funding_pnl.iloc[1]), -0.0005, places=9)
+        self.assertGreater(float(result.diagnostics["avg_child_orders_per_rebalance"]), 0.0)
+        self.assertEqual(float(result.diagnostics["skipped_notional_ratio"]), 0.0)
+
+    def test_backtest_tracks_implementation_shortfall(self):
+        store = make_store()
+        strategy = SimpleNamespace(
+            reset_state=lambda: None,
+            signals=lambda data, ts: pd.Series({"A": 1.0, "B": -1.0}),
+            construct=lambda scores, data, ts: pd.Series({"A": 0.01, "B": -0.01}),
+            risk=lambda weights, data, ts: pd.Series(weights),
+        )
+        result = run_backtest(
+            strategy,
+            store,
+            timestamps=store.index,
+            execution=ExecutionConfig(
+                rebalance_every_bars=1,
+                target_gross_exposure=1.0,
+                target_net_exposure=0.0,
+                max_gross_exposure=1.0,
+                max_abs_weight=0.6,
+                max_group_gross=1.0,
+                taker_fee_bps=0.0,
+                slippage_bps=0.0,
+                min_history_bars=0,
+                min_dollar_volume=0.0,
+                min_price=0.0,
+                listing_cooldown_bars=0,
+                min_trade_notional_usd=10_000.0,
+            ),
+        )
+        self.assertGreater(float(result.diagnostics["skipped_notional_total_usd"]), 0.0)
+        self.assertGreater(float(result.diagnostics["skipped_notional_ratio"]), 0.0)
 
 
 if __name__ == "__main__":

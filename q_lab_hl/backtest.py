@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 
 import numpy as np
@@ -71,6 +72,11 @@ def run_backtest(
     weights_history = []
     trade_count = 0
     filtered_assets_total = 0
+    child_orders_total = 0
+    multi_order_assets_total = 0
+    min_notional_skipped_total_usd = 0.0
+    implemented_delta_notional_total_usd = 0.0
+    rebalances_with_multi_order = 0
     market_return = data_store.market_return_series(timestamps)
     for i, ts in enumerate(timestamps):
         cost_ret = 0.0
@@ -84,10 +90,16 @@ def run_backtest(
             if not new_weights.empty:
                 validate_exposures(new_weights, execution.max_gross_exposure, execution.target_net_exposure)
             turnover = _turnover(current_weights, new_weights)
+            implementation = _implementation_diagnostics(current_weights, new_weights, execution)
             cost_ret = turnover * (execution.taker_fee_bps + execution.slippage_bps) / 10_000.0
             current_weights = new_weights
             filtered_assets_total += filtered_assets
             trade_count += 1
+            child_orders_total += int(implementation["child_orders"])
+            multi_order_assets_total += int(implementation["multi_order_assets"])
+            min_notional_skipped_total_usd += float(implementation["skipped_notional_usd"])
+            implemented_delta_notional_total_usd += float(implementation["implemented_delta_notional_usd"])
+            rebalances_with_multi_order += int(implementation["multi_order_assets"] > 0)
             turnover_rows.append((ts, turnover))
             weights_history.append((ts, current_weights.copy()))
             pending_target = None
@@ -125,6 +137,19 @@ def run_backtest(
         "avg_gross": float(gross.mean()) if not gross.empty else 0.0,
         "avg_net": float(net.mean()) if not net.empty else 0.0,
         "avg_turnover": float(turnover.mean()) if not turnover.empty else 0.0,
+        "avg_child_orders_per_rebalance": float(child_orders_total / trade_count) if trade_count else 0.0,
+        "avg_multi_order_assets_per_rebalance": float(multi_order_assets_total / trade_count) if trade_count else 0.0,
+        "fraction_rebalances_with_multi_order": float(rebalances_with_multi_order / trade_count) if trade_count else 0.0,
+        "skipped_notional_total_usd": float(min_notional_skipped_total_usd),
+        "implemented_delta_notional_total_usd": float(implemented_delta_notional_total_usd),
+        "skipped_notional_ratio": (
+            0.0
+            if implemented_delta_notional_total_usd + min_notional_skipped_total_usd <= 0.0
+            else float(
+                min_notional_skipped_total_usd
+                / (implemented_delta_notional_total_usd + min_notional_skipped_total_usd)
+            )
+        ),
         "final_weights": current_weights.copy(),
         "final_weight_diagnostics": exposure_diagnostics(current_weights),
     }
@@ -189,3 +214,59 @@ def _turnover(old_weights: pd.Series, new_weights: pd.Series) -> float:
             - new_weights.reindex(names).fillna(0.0).to_numpy()
         ).sum()
     )
+
+
+def _implementation_diagnostics(old_weights: pd.Series, new_weights: pd.Series, execution: ExecutionConfig) -> dict:
+    names = sorted(set(old_weights.index) | set(new_weights.index))
+    if not names:
+        return {
+            "child_orders": 0,
+            "multi_order_assets": 0,
+            "skipped_notional_usd": 0.0,
+            "implemented_delta_notional_usd": 0.0,
+        }
+    gross_notional = (
+        float(execution.reference_account_value_usd)
+        * float(execution.target_margin_usage_ratio)
+        * float(execution.assumed_leverage)
+    )
+    if gross_notional <= 0.0:
+        return {
+            "child_orders": 0,
+            "multi_order_assets": 0,
+            "skipped_notional_usd": 0.0,
+            "implemented_delta_notional_usd": 0.0,
+        }
+    if float(execution.max_single_order_notional_usd) <= 0.0:
+        return {
+            "child_orders": 0,
+            "multi_order_assets": 0,
+            "skipped_notional_usd": 0.0,
+            "implemented_delta_notional_usd": 0.0,
+        }
+    deltas = (
+        new_weights.reindex(names).fillna(0.0).to_numpy(dtype=float)
+        - old_weights.reindex(names).fillna(0.0).to_numpy(dtype=float)
+    )
+    child_orders = 0
+    multi_order_assets = 0
+    skipped_notional = 0.0
+    implemented_notional = 0.0
+    for delta in np.abs(deltas):
+        delta_notional = float(delta * gross_notional)
+        if delta_notional <= 0.0:
+            continue
+        if delta_notional < float(execution.min_trade_notional_usd):
+            skipped_notional += delta_notional
+            continue
+        implemented_notional += delta_notional
+        required_orders = max(1, int(ceil(delta_notional / float(execution.max_single_order_notional_usd))))
+        child_orders += required_orders
+        if required_orders > 1:
+            multi_order_assets += 1
+    return {
+        "child_orders": child_orders,
+        "multi_order_assets": multi_order_assets,
+        "skipped_notional_usd": skipped_notional,
+        "implemented_delta_notional_usd": implemented_notional,
+    }

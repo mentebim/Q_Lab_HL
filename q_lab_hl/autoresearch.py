@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -11,65 +11,37 @@ from typing import Any
 
 import pandas as pd
 
-from q_lab_hl.backtest import load_strategy
+from q_lab_hl.backtest import load_strategy, strategy_warmup_timestamps
 from q_lab_hl.config import ExecutionConfig
 from q_lab_hl.data import DataStore
-from q_lab_hl.evaluate import evaluate
-
-
-DEFAULT_LEADERBOARD_PATH = "autoresearch/leaderboard.jsonl"
-DEFAULT_RESULTS_DIR = "autoresearch/results"
-
-
-@dataclass(frozen=True)
-class AcceptancePolicy:
-    primary_metric: str = "periods.outer.active_sharpe_annualized"
-    primary_min: float = 0.0
-    min_active_sharpe: float = 0.0
-    max_beta_abs: float = 0.15
-    max_turnover: float = 0.75
-    compare_to_best: bool = False
-    compare_to_candidate_id: str | None = None
-    min_primary_lift: float = 0.0
-
-
-@dataclass(frozen=True)
-class RecordingConfig:
-    leaderboard_path: str = DEFAULT_LEADERBOARD_PATH
-    results_dir: str = DEFAULT_RESULTS_DIR
-    append_leaderboard: bool = True
-    write_result: bool = True
-
-
-@dataclass(frozen=True)
-class ExperimentSpec:
-    experiment_id: str = "unnamed_experiment"
-    candidate_id: str = "unnamed_candidate"
-    hypothesis: str = ""
-    strategy_path: str = "strategy.py"
-    strategy_spec: dict[str, Any] | None = None
-    execution_overrides: dict[str, Any] | None = None
-    data_dir: str = "data/market_cache_1h"
-    synthetic: bool = False
-    evaluation_periods: tuple[str, ...] = ("inner", "outer")
-    notes: str = ""
-    acceptance: AcceptancePolicy = AcceptancePolicy()
-    recording: RecordingConfig = RecordingConfig()
+from q_lab_hl.evaluate import build_time_slices, evaluate, evaluate_timestamps
+from q_lab_hl.promotion_objects import build_promotion_eligibility
+from q_lab_hl.research_objects import (
+    AcceptancePolicy,
+    ExperimentSpec,
+    ExpressFilterConfig,
+    RecordingConfig,
+)
+from strategy_model import get_strategy_family
 
 
 def load_experiment_spec(path: str | Path) -> ExperimentSpec:
     payload = json.loads(Path(path).read_text())
+    defaults = ExperimentSpec()
     return ExperimentSpec(
-        experiment_id=str(payload.get("experiment_id") or ExperimentSpec.experiment_id),
-        candidate_id=str(payload.get("candidate_id") or ExperimentSpec.candidate_id),
+        experiment_id=str(payload.get("experiment_id") or defaults.experiment_id),
+        candidate_id=str(payload.get("candidate_id") or defaults.candidate_id),
         hypothesis=str(payload.get("hypothesis") or ""),
-        strategy_path=str(payload.get("strategy_path") or ExperimentSpec.strategy_path),
+        strategy_path=str(payload.get("strategy_path") or defaults.strategy_path),
+        strategy_family=str(payload.get("strategy_family") or defaults.strategy_family),
+        research_policy_path=str(payload.get("research_policy_path") or defaults.research_policy_path),
         strategy_spec=payload.get("strategy_spec"),
         execution_overrides=payload.get("execution_overrides"),
-        data_dir=str(payload.get("data_dir") or ExperimentSpec.data_dir),
+        data_dir=str(payload.get("data_dir") or defaults.data_dir),
         synthetic=bool(payload.get("synthetic", False)),
-        evaluation_periods=tuple(payload.get("evaluation_periods", ExperimentSpec.evaluation_periods)),
+        evaluation_periods=tuple(payload.get("evaluation_periods", defaults.evaluation_periods)),
         notes=str(payload.get("notes") or ""),
+        express_filter=ExpressFilterConfig(**payload.get("express_filter", {})),
         acceptance=AcceptancePolicy(**payload.get("acceptance", {})),
         recording=RecordingConfig(**payload.get("recording", {})),
     )
@@ -82,6 +54,8 @@ def override_spec(
     candidate_id: str | None = None,
     hypothesis: str | None = None,
     strategy_path: str | None = None,
+    strategy_family: str | None = None,
+    research_policy_path: str | None = None,
     strategy_spec: dict[str, Any] | None = None,
     execution_overrides: dict[str, Any] | None = None,
     data_dir: str | None = None,
@@ -96,6 +70,10 @@ def override_spec(
         updates["hypothesis"] = hypothesis
     if strategy_path is not None:
         updates["strategy_path"] = strategy_path
+    if strategy_family is not None:
+        updates["strategy_family"] = strategy_family
+    if research_policy_path is not None:
+        updates["research_policy_path"] = research_policy_path
     if strategy_spec is not None:
         updates["strategy_spec"] = strategy_spec
     if execution_overrides is not None:
@@ -128,6 +106,8 @@ def run_experiment(
         "hypothesis": spec.hypothesis,
         "notes": spec.notes,
         "strategy_path": spec.strategy_path,
+        "strategy_family": get_strategy_family(spec.strategy_family).summary(),
+        "research_policy_path": spec.research_policy_path,
         "strategy_hash": strategy_hash(spec.strategy_path),
         "git_commit": git_commit(),
         "data": {
@@ -138,14 +118,39 @@ def run_experiment(
         },
         "execution": _jsonable(asdict(execution)),
         "spec": experiment_spec_to_dict(spec),
+        "express_filter": None,
+        "promotion_eligibility": None,
         "periods": {},
     }
+    express_filter = run_express_filter(strategy, data_store, execution, spec.express_filter)
+    result["express_filter"] = express_filter
+    if not express_filter["passed"]:
+        result["acceptance"] = {
+            "status": "filtered",
+            "accepted": False,
+            "judged_period": express_filter["period"],
+            "primary_metric": f"express_filter.{express_filter['period']}.{express_filter['primary_metric']}",
+            "primary_metric_value": express_filter["primary_metric_value"],
+            "failed_checks": ["express_filter"],
+            "review_reasons": list(express_filter["failed_checks"]),
+            "reference_experiment_id": None,
+            "reference_candidate_id": None,
+            "reference_primary_value": None,
+        }
+        result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
+        if write_result:
+            output_path = write_experiment_result(result, spec.recording.results_dir)
+            result["result_path"] = str(output_path)
+        if append_leaderboard:
+            append_leaderboard_entry(leaderboard_record(result), spec.recording.leaderboard_path)
+        return result
     for period in spec.evaluation_periods:
         metrics = evaluate(strategy, data_store, period=period, execution=execution)
         result["periods"][period] = compact_metrics(metrics)
     if hasattr(strategy, "last_fit_summary"):
         result["model_fit"] = _jsonable(strategy.last_fit_summary())
     result["acceptance"] = evaluate_acceptance(result, spec.acceptance, leaderboard)
+    result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
     if write_result:
         output_path = write_experiment_result(result, spec.recording.results_dir)
         result["result_path"] = str(output_path)
@@ -165,6 +170,101 @@ def compact_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
         key: _jsonable(value)
         for key, value in metrics.items()
         if not isinstance(value, (pd.Series, pd.DataFrame))
+    }
+
+
+def build_express_data_store(
+    data_store: DataStore,
+    config: ExpressFilterConfig,
+) -> tuple[DataStore, dict[str, Any]]:
+    if config.trailing_bars > 0 and len(data_store.index) > config.trailing_bars:
+        start = data_store.index[-config.trailing_bars]
+    else:
+        start = data_store.index[0]
+    sliced = data_store.subset(start=start)
+    assets = list(sliced.assets)
+    if config.max_assets > 0 and len(assets) > config.max_assets:
+        trailing_window = max(24, min(len(sliced.index), 24 * 7))
+        dollar_volume = (sliced.close.iloc[-trailing_window:] * sliced.volume.iloc[-trailing_window:]).mean()
+        top_assets = (
+            dollar_volume.sort_values(ascending=False)
+            .index[: config.max_assets]
+            .tolist()
+        )
+        sliced = sliced.subset(assets=top_assets)
+        assets = top_assets
+    return sliced, {
+        "bars": len(sliced.index),
+        "assets": list(assets),
+        "start": str(sliced.index.min()),
+        "end": str(sliced.index.max()),
+    }
+
+
+def run_express_filter(
+    strategy_module,
+    data_store: DataStore,
+    execution: ExecutionConfig,
+    config: ExpressFilterConfig,
+) -> dict[str, Any]:
+    if not config.enabled:
+        return {
+            "enabled": False,
+            "passed": True,
+            "status": "disabled",
+            "period": config.period,
+            "primary_metric": config.primary_metric,
+            "primary_metric_value": None,
+            "failed_checks": [],
+            "data": None,
+            "metrics": None,
+        }
+    express_store, data_summary = build_express_data_store(data_store, config)
+    try:
+        usable_index = strategy_warmup_timestamps(express_store, execution)
+        period_index = getattr(build_time_slices(usable_index), config.period)
+        metrics = evaluate_timestamps(
+            strategy_module,
+            express_store,
+            timestamps=period_index,
+            execution=execution,
+            period_label=config.period,
+            bootstrap_samples=config.bootstrap_samples,
+        )
+        metrics = compact_metrics(metrics)
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "passed": False,
+            "status": "filtered",
+            "period": config.period,
+            "primary_metric": config.primary_metric,
+            "primary_metric_value": None,
+            "failed_checks": ["evaluation_error"],
+            "data": data_summary,
+            "metrics": None,
+            "error": str(exc),
+        }
+    primary_value = as_float(metrics.get(config.primary_metric))
+    failed_checks: list[str] = []
+    if primary_value is None or primary_value < config.primary_min:
+        failed_checks.append("primary_metric")
+    if as_float(metrics.get("active_sharpe_annualized"), default=-float("inf")) < config.min_active_sharpe:
+        failed_checks.append("active_sharpe_annualized")
+    if abs(as_float(metrics.get("beta_to_market"), default=float("inf"))) > config.max_beta_abs:
+        failed_checks.append("beta_to_market")
+    if as_float(metrics.get("turnover"), default=float("inf")) > config.max_turnover:
+        failed_checks.append("turnover")
+    return {
+        "enabled": True,
+        "passed": not failed_checks,
+        "status": "passed" if not failed_checks else "filtered",
+        "period": config.period,
+        "primary_metric": config.primary_metric,
+        "primary_metric_value": primary_value,
+        "failed_checks": failed_checks,
+        "data": data_summary,
+        "metrics": metrics,
     }
 
 
@@ -253,6 +353,8 @@ def leaderboard_record(result: dict[str, Any]) -> dict[str, Any]:
         "accepted": result["acceptance"]["accepted"],
         "primary_metric": result["acceptance"]["primary_metric"],
         "primary_metric_value": result["acceptance"]["primary_metric_value"],
+        "express_filter": result.get("express_filter"),
+        "promotion_eligibility": result.get("promotion_eligibility"),
         "periods": result["periods"],
         "model_fit": result.get("model_fit"),
         "summary": {

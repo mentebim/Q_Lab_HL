@@ -13,6 +13,41 @@ _FRAME_CACHE: dict[tuple[int, tuple[tuple[str, str, int], ...]], dict] = {}
 
 
 @dataclass(frozen=True)
+class StrategyFamilyDefinition:
+    family_id: str
+    description: str
+    allowed_feature_kinds: tuple[str, ...]
+    allowed_transforms: tuple[str, ...]
+    allowed_target_kinds: tuple[str, ...]
+    allowed_model_families: tuple[str, ...]
+    min_features: int
+    max_features: int
+    min_position_bucket: int
+    max_position_bucket: int
+
+    def summary(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+LINEAR_CROSS_SECTION_FAMILY = StrategyFamilyDefinition(
+    family_id="linear_cross_section_v1",
+    description="Approved cross-sectional linear family for bounded Hyperliquid candidate search.",
+    allowed_feature_kinds=("return", "volatility", "ma_gap", "funding_mean"),
+    allowed_transforms=("zscore", "rank", "none"),
+    allowed_target_kinds=("next_open_to_close_return", "next_close_to_close_return"),
+    allowed_model_families=("ols", "ridge"),
+    min_features=1,
+    max_features=12,
+    min_position_bucket=2,
+    max_position_bucket=10,
+)
+
+STRATEGY_FAMILY_REGISTRY: dict[str, StrategyFamilyDefinition] = {
+    LINEAR_CROSS_SECTION_FAMILY.family_id: LINEAR_CROSS_SECTION_FAMILY,
+}
+
+
+@dataclass(frozen=True)
 class FeatureSpec:
     name: str
     kind: str
@@ -47,12 +82,13 @@ class StrategySpec:
         return asdict(self)
 
 
-def strategy_spec_from_dict(payload: dict[str, Any], base: StrategySpec) -> StrategySpec:
+def strategy_spec_from_dict(payload: dict[str, Any], base: StrategySpec, strategy_family: str = LINEAR_CROSS_SECTION_FAMILY.family_id) -> StrategySpec:
+    family = get_strategy_family(strategy_family)
     features_payload = payload.get("features")
     features = base.features if features_payload is None else tuple(feature_spec_from_dict(item) for item in features_payload)
     target = base.target if payload.get("target") is None else target_spec_from_dict(payload["target"])
     model = base.model if payload.get("model") is None else model_spec_from_dict(payload["model"])
-    return StrategySpec(
+    spec = StrategySpec(
         train_window_bars=int(payload.get("train_window_bars", base.train_window_bars)),
         min_train_rows=int(payload.get("min_train_rows", base.min_train_rows)),
         position_bucket=int(payload.get("position_bucket", base.position_bucket)),
@@ -60,6 +96,8 @@ def strategy_spec_from_dict(payload: dict[str, Any], base: StrategySpec) -> Stra
         target=target,
         model=model,
     )
+    validate_strategy_spec(spec, family)
+    return spec
 
 
 def feature_spec_from_dict(payload: dict[str, Any]) -> FeatureSpec:
@@ -82,6 +120,50 @@ def model_spec_from_dict(payload: dict[str, Any]) -> ModelSpec:
         l2_reg=float(payload.get("l2_reg", 0.0)),
         prediction_clip=float(payload.get("prediction_clip", 3.0)),
     )
+
+
+def get_strategy_family(family_id: str) -> StrategyFamilyDefinition:
+    try:
+        return STRATEGY_FAMILY_REGISTRY[family_id]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported strategy family '{family_id}'") from exc
+
+
+def validate_strategy_spec(strategy_spec: StrategySpec, family: StrategyFamilyDefinition) -> None:
+    if not (family.min_features <= len(strategy_spec.features) <= family.max_features):
+        raise ValueError(
+            f"strategy family '{family.family_id}' requires between {family.min_features} and "
+            f"{family.max_features} features; received {len(strategy_spec.features)}"
+        )
+    if not (family.min_position_bucket <= strategy_spec.position_bucket <= family.max_position_bucket):
+        raise ValueError(
+            f"strategy family '{family.family_id}' requires position_bucket between "
+            f"{family.min_position_bucket} and {family.max_position_bucket}; "
+            f"received {strategy_spec.position_bucket}"
+        )
+    if strategy_spec.target.kind not in family.allowed_target_kinds:
+        raise ValueError(
+            f"target kind '{strategy_spec.target.kind}' is not allowed in strategy family '{family.family_id}'"
+        )
+    if strategy_spec.model.family not in family.allowed_model_families:
+        raise ValueError(
+            f"model family '{strategy_spec.model.family}' is not allowed in strategy family '{family.family_id}'"
+        )
+    seen_names: set[str] = set()
+    for feature in strategy_spec.features:
+        if feature.kind not in family.allowed_feature_kinds:
+            raise ValueError(
+                f"feature kind '{feature.kind}' is not allowed in strategy family '{family.family_id}'"
+            )
+        if feature.transform not in family.allowed_transforms:
+            raise ValueError(
+                f"feature transform '{feature.transform}' is not allowed in strategy family '{family.family_id}'"
+            )
+        if feature.lookback <= 0:
+            raise ValueError(f"feature '{feature.name}' must have positive lookback")
+        if feature.name in seen_names:
+            raise ValueError(f"duplicate feature name '{feature.name}' is not allowed")
+        seen_names.add(feature.name)
 
 
 @dataclass(frozen=True)

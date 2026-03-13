@@ -1,52 +1,71 @@
 # Q_Lab_HL
 
-Q_Lab_HL is now a minimal statistical Hyperliquid research harness.
+Q_Lab_HL is a constrained autoresearch repo for Hyperliquid quant strategies.
 
-The repo is intentionally narrow:
+The repo is not a general trading sandbox. Its job is to support one loop only:
 
-- data layer: parquet market panels and tradability rules
-- strategy layer: feature engineering plus a trainable statistical model
-- judge layer: deterministic next-bar backtest and period evaluation
-- experiment layer: JSON result files and a flat leaderboard
+1. define a bounded candidate inside an approved strategy family
+2. run a fast express filter
+3. evaluate survivors with the fixed judge
+4. promote only accepted candidates
+5. execute only promoted champions in paper or live mode
 
-## Core Layout
+## Architecture
 
-- `strategy.py`: editable statistical strategy surface
-- `strategy_model.py`: small helper for feature generation, dataset building, and linear-model fitting
-- `run.py`: manual CLI for cache build and single-period evaluation
-- `autoresearch.py`: deterministic bounded experiment runner
-- `q_lab_hl/`: fixed data, execution, portfolio, and evaluation modules
-- `autoresearch/`: experiment config, leaderboard, and result outputs
-- `execution/`: pinned-champion live/paper execution layer
-- `data/market_cache_1h/`: bundled hourly market cache
+- `autoresearch/`: human-owned research policy, candidate specs, leaderboard, and result artifacts
+- `strategy.py`: current approved strategy entrypoint
+- `strategy_model.py`: approved model-family implementation surface
+- `q_lab_hl/`: fixed judge modules for data, backtest, and evaluation
+- `execution/`: thin promotion and execution layer for pinned champions
+- `data/market_cache_1h/`: local Hyperliquid market cache
 
-## What Stays Fixed
+## Repo Contract
 
-- next-bar execution only
-- funding, fees, and slippage included in PnL
-- tradability constraints are part of truth
-- long/short gross and net exposure control
-- split-based out-of-sample evaluation
+The repo has three hard separations:
 
-The harness under `q_lab_hl/` is the judge. Normal research should not modify it.
+- fixed judge
+  `q_lab_hl/data.py`, `q_lab_hl/backtest.py`, `q_lab_hl/evaluate.py`, and most of `q_lab_hl/config.py`
+- bounded research surface
+  candidate specs, approved strategy-family parameters, and limited strategy/model code
+- gated execution
+  only pinned champions are eligible for paper or live execution
 
-## What You Edit
+Agents should not mutate the judge as part of normal research.
 
-Default mutation scope:
+## Research Objects
 
-- `strategy.py`
-- `strategy_model.py`
-- `autoresearch/config*.json`
+The object model is moving toward explicit research contracts:
 
-Default fixed scope:
+- `ResearchPolicy`: human-owned mission and mutation boundary
+- `StrategyFamily`: approved model family and mutable parameter surface
+- `CandidateSpec`: one bounded candidate for evaluation
+- `ExpressFilterConfig`: fast first-stage gate before the full judge
+- `AcceptancePolicy`: judge thresholds and comparison rules
+- `RecordingConfig`: result and leaderboard output settings
 
-- `q_lab_hl/data.py`
-- `q_lab_hl/backtest.py`
-- `q_lab_hl/evaluate.py`
-- `q_lab_hl/portfolio.py`
-- `run.py`
+Current defaults live in:
 
-## Manual Workflow
+- [autoresearch/research_policy.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/research_policy.json)
+- [autoresearch/candidate.template.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/candidate.template.json)
+- [autoresearch/config.agent.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/config.agent.json)
+
+## Allowed Degrees Of Freedom
+
+Normal research should mostly mutate:
+
+- `strategy_spec`
+- selected `execution_overrides`
+- approved model-family parameters
+- candidate metadata in `autoresearch/`
+
+Normal research should not mutate:
+
+- data ingestion semantics
+- backtest rules
+- evaluation logic
+- live execution plumbing
+
+## Core Commands
 
 Install dependencies:
 
@@ -54,144 +73,49 @@ Install dependencies:
 python3 -m pip install -e .
 ```
 
-Evaluate the current strategy on the bundled hourly cache:
-
-```bash
-python3 run.py --evaluate --data-dir data/market_cache_1h --period inner --show-fit
-```
-
-Emit the same result as JSON:
+Evaluate the current strategy on real data:
 
 ```bash
 python3 run.py --evaluate --data-dir data/market_cache_1h --period outer --json --show-fit
 ```
 
-Rebuild the Hyperliquid cache:
-
-```bash
-python3 run.py --build-cache --cache-dir data/market_cache_1h --start 2020-01-01 --timeframe 1h --top-n 20 --no-ssl-verify
-```
-
-## Strategy Workflow
-
-The current strategy is statistical, not threshold-rule based.
-
-Its mutation surface is one explicit config object in `strategy.py`:
-
-- feature list
-- per-feature transform
-- target definition
-- model family and regularization
-- train window
-- position bucket
-
-That same surface can now be supplied from JSON experiment files through:
-
-- `strategy_spec`
-- `execution_overrides`
-
-At each rebalance timestamp it:
-
-1. builds feature rows for tradable assets
-2. constructs a historical training set using only prior bars
-3. fits a small linear model
-4. predicts next-bar scores for the current cross-section
-5. converts those scores into long/short weights
-
-The default feature set is:
-
-- 1h return
-- 6h return
-- 24h return
-- 24h realized volatility
-- 24h moving-average gap
-- 8h mean funding
-
-Supported feature transforms currently include:
-
-- `zscore`
-- `rank`
-- `none`
-
-## Autoresearch Workflow
-
-The bounded experiment loop is:
-
-1. read `RESEARCH_PROMPT.md`, `AUTORESEARCH_RULES.md`, and `autoresearch/config.agent.json`
-2. run `python3 autoresearch.py --config autoresearch/config.agent.json`
-3. parse stdout JSON
-4. inspect `autoresearch/leaderboard.jsonl`
-5. mutate `autoresearch/config.agent.json`, `strategy.py`, or `strategy_model.py`
-6. rerun and compare against the prior result
-
-Example:
+Run bounded autoresearch from a candidate spec:
 
 ```bash
 python3 autoresearch.py --config autoresearch/config.agent.json
 ```
 
-This is now enough to search the model from JSON alone. Agents do not need to rewrite `strategy.py` just to change:
-
-- features
-- transforms
-- target kind
-- model family
-- regularization
-- position bucket
-- rebalance cadence
-
-Real data is the primary workflow. The command above evaluates the current candidate on the bundled hourly cache in `data/market_cache_1h`, writes a full JSON result under `autoresearch/results/`, and appends a compact summary to `autoresearch/leaderboard.jsonl`.
-
-Optional smoke test with no side effects:
+Refresh the local cache:
 
 ```bash
-python3 autoresearch.py \
-  --config autoresearch/config.agent.json \
-  --synthetic \
-  --no-write-result \
-  --no-append-leaderboard \
-  --experiment-id smoke_stat_model \
-  --candidate-id smoke_stat_model
+python3 -m execution.update_cache --data-dir data/market_cache_1h
 ```
 
-## Execution Workflow
-
-The live layer is intentionally thin and separate from research:
-
-1. refresh the trailing market cache
-2. pin one champion strategy
-3. run one paper or live execution cycle
-
-The default command path is:
+Run one paper execution cycle for the pinned champion:
 
 ```bash
-python -m execution.update_cache --data-dir data/market_cache_1h
-python -m execution.run_live --champion execution/champion.json
+python3 -m execution.run_live --champion execution/champion.paper.json
 ```
 
-The execution layer does not auto-trade the top leaderboard row by default. It trades the pinned strategy in `execution/champion.json`.
+## Promotion Model
 
-## Data Contract
+Promotion is intentionally conservative:
 
-`run.py --data-dir <dir>` and `autoresearch.py` expect matrix parquet files:
+- candidate research result
+- accepted result artifact
+- pinned paper champion
+- monitored paper behavior
+- pinned live champion
 
-- `open.parquet`
-- `high.parquet`
-- `low.parquet`
-- `close.parquet`
-- `volume.parquet`
-- optional `funding.parquet`
-- optional `tradable.parquet`
-- optional `metadata.json`
+Automatic execution is for promoted champions only.
 
-Each parquet file is a timestamp-indexed asset matrix.
+## Current Roadmap
 
-## Prompts
-
-Prompt files are still part of the repo, but they are guidance around the workflow, not runtime components:
-
-- `RESEARCH_PROMPT.md`: human-owned research objective and anti-goals
-- `AUTORESEARCH_RULES.md`: operational edit/run rules for workers
+- Done: repo identity cleanup and explicit research object model
+- Done: strategy family registry and bounded mutation contract
+- Done: staged promotion pipeline cleanup
+- Done: Phase 6 express filter for faster research throughput
+- Next: final integration cleanup around research-to-promotion handoff
 
 ## Tests
 

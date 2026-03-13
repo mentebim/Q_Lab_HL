@@ -1,73 +1,76 @@
-# Hyperliquid Stat-Arb Research Prompt
+# Quant Autoresearch Prompt
 
-## Primary Objective
+## Mission
 
-Develop trainable long/short Hyperliquid perpetual futures strategies that improve out-of-sample active risk-adjusted returns after fees, slippage, and funding while respecting the fixed execution model of this repo.
+Develop bounded Hyperliquid quant strategy candidates inside the approved research contract of this repo.
 
-The default north-star metric is robust out-of-sample quality, not a single lucky in-sample Sharpe print.
+The goal is not unrestricted creativity. The goal is correct search:
 
-## Secondary Metrics And Tradeoffs
+- narrow degrees of freedom
+- fixed judge
+- comparable results
+- conservative promotion
 
-- Higher cross-validation validation score is preferred to higher in-sample score.
-- Higher active Sharpe is preferred when turnover, beta drift, and concentration stay controlled.
-- Lower turnover is preferred when alpha quality is similar.
-- Lower market beta drift is preferred when returns are similar.
-- More stable performance across folds is preferred to fragile peak performance.
-- Simpler hypotheses are preferred to complicated feature piles with weak evidence.
+## What The Agent Is Optimizing
 
-## Hard Constraints
+The agent should search for candidates that improve out-of-sample active risk-adjusted returns after costs, funding, and implementability realism.
 
-- Execution is next-bar only. No same-bar fills, peeking, or lookahead.
-- Funding, fees, and slippage are part of truth. Do not ignore cost drag.
-- Tradability constraints are real. Do not rely on names that fail liquidity, history, price, or listing-cooldown filters.
-- Long/short gross and net exposure controls are part of the strategy contract.
-- Out-of-sample and cross-validation results matter more than in-sample performance.
-- The harness under `q_lab_hl/` is the judge. Do not weaken it to make a strategy look better.
+The preferred judgment order is:
 
-## Allowed Edit Scope
+1. outer/test quality
+2. stability across periods
+3. lower beta drift
+4. lower turnover when alpha quality is similar
+5. simpler hypotheses when performance is similar
 
-Default allowed mutation scope:
+## Research Contract
 
-- `strategy.py`
-- `strategy_model.py`
-- autoresearch metadata such as experiment configs or notes when needed
+The repo expresses this loop only:
 
-Default fixed scope:
+1. propose a bounded `CandidateSpec`
+2. optionally pass an express filter
+3. pass the full fixed judge
+4. promote to paper only if accepted
+5. promote to live only after paper validation
 
-- `q_lab_hl/`
-- `run.py`
-- existing evaluation, audit, portfolio, and execution semantics
+Do not turn the repo into a general trading framework or agent sandbox.
 
-Only change the fixed harness when there is a concrete, defensible bug or missing capability in the judge itself, and document that separately from alpha iteration.
+## Allowed Degrees Of Freedom
 
-## Preferred Research Directions
+Default allowed mutation surface:
 
-- feature engineering on hourly market panels
-- target definitions aligned with next-bar execution
-- linear and regularized linear models before more complex families
-- transformations that improve signal stability without leakage
-- train-window choices that improve robustness
-- simpler feature sets that hold up out of sample
+- `strategy_spec`
+- selected `execution_overrides`
+- bounded feature, target, transform, model, and train-window choices
+- candidate metadata and notes under `autoresearch/`
 
-## Anti-Goals And Failure Modes
+Default disallowed mutation surface:
 
-- optimizing only to one split
-- adding features or transforms without a bounded hypothesis
-- increasing turnover to manufacture in-sample Sharpe
-- relying on one asset or one cluster of highly correlated assets
-- silently changing the objective by editing the evaluator
-- overfitting feature transformations without a coherent market hypothesis
+- judge mechanics under `q_lab_hl/`
+- execution plumbing under `execution/`
+- data ingestion semantics
+- acceptance semantics designed to make weak candidates pass
 
-## Explicit Judge Integrity Warning
+## Approved Research Direction
 
-Do not cheat by modifying the judge.
+Prefer bounded model-family search:
 
-That includes:
+- cross-sectional linear models
+- regularized linear models
+- simple ranking-based transforms
+- train-window and rebalance variations
+- feature-set changes with a clear market hypothesis
 
-- loosening cost assumptions to rescue a weak strategy
-- bypassing next-bar execution
-- altering tradability filters to admit untradeable names
-- hiding weak out-of-sample periods
-- changing leaderboard logic to auto-accept weak candidates
+Avoid open-ended arbitrary code generation unless the strategy family itself is being intentionally expanded by a human-reviewed change.
 
-If performance only appears after judge edits, treat that as invalid unless the edit is a genuine harness bug and is reviewed on its own merits.
+## Integrity Rules
+
+- No lookahead
+- No same-bar execution
+- No weakening costs, funding, or tradability filters
+- No hidden changes to the judge
+- No promotion based on in-sample wins alone
+- Do not promote directly to champion without a valid result artifact
+- Prefer mutating candidate JSON over rewriting Python
+
+If a candidate only looks good after changing the evaluator, treat it as invalid.

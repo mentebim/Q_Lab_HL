@@ -1,8 +1,10 @@
 {
-  "experiment_id": "baseline_stat_model",
-  "candidate_id": "baseline_ridge_v1",
-  "hypothesis": "A small linear model on lagged returns, volatility, moving-average gap, and funding can rank hourly Hyperliquid names better than naive long-short selection.",
+  "experiment_id": "candidate_family_run",
+  "candidate_id": "candidate_linear_v1",
+  "hypothesis": "One bounded candidate within the approved cross-sectional linear strategy family.",
   "strategy_path": "strategy.py",
+  "strategy_family": "linear_cross_section_v1",
+  "research_policy_path": "autoresearch/research_policy.json",
   "strategy_spec": {
     "train_window_bars": 504,
     "min_train_rows": 200,
@@ -23,40 +25,6 @@
         "lookback": 1,
         "transform": "zscore",
         "clip": 3.0
-      },
-      {
-        "name": "ret_6h",
-        "kind": "return",
-        "lookback": 6,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "ret_24h",
-        "kind": "return",
-        "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "vol_24h",
-        "kind": "volatility",
-        "lookback": 24,
-        "transform": "rank"
-      },
-      {
-        "name": "ma_gap_24h",
-        "kind": "ma_gap",
-        "lookback": 24,
-        "transform": "zscore",
-        "clip": 3.0
-      },
-      {
-        "name": "funding_8h",
-        "kind": "funding_mean",
-        "lookback": 8,
-        "transform": "zscore",
-        "clip": 3.0
       }
     ]
   },
@@ -69,7 +37,19 @@
     "inner",
     "outer"
   ],
-  "notes": "Minimal statistical autoresearch run against the current strategy surface.",
+  "notes": "Copy this template for new bounded candidate searches.",
+  "express_filter": {
+    "enabled": true,
+    "period": "outer",
+    "trailing_bars": 1440,
+    "max_assets": 12,
+    "bootstrap_samples": 50,
+    "primary_metric": "score_inner",
+    "primary_min": -1.0,
+    "min_active_sharpe": -0.25,
+    "max_beta_abs": 0.25,
+    "max_turnover": 1.0
+  },
   "acceptance": {
     "primary_metric": "periods.outer.active_sharpe_annualized",
     "primary_min": 0.0,

@@ -162,6 +162,34 @@ class DataStore:
     def sector(self, asset: str) -> str:
         return str(self.metadata.get(asset, {}).get("sector", "unknown"))
 
+    def subset(
+        self,
+        *,
+        assets: list[str] | None = None,
+        start=None,
+        end=None,
+    ) -> "DataStore":
+        asset_list = list(assets) if assets is not None else list(self.close.columns)
+        index = self.close.index
+        if start is not None:
+            index = index[index >= pd.Timestamp(start)]
+        if end is not None:
+            index = index[index <= pd.Timestamp(end)]
+        metadata = {asset: self.metadata.get(asset, {}) for asset in asset_list}
+        panels = MarketPanels(
+            open=self.open.loc[index, asset_list],
+            high=self.high.loc[index, asset_list],
+            low=self.low.loc[index, asset_list],
+            close=self.close.loc[index, asset_list],
+            volume=self.volume.loc[index, asset_list],
+            funding=self.funding_panel.loc[index, asset_list],
+            open_interest=self.oi_panel.loc[index, asset_list],
+            tradable=self.tradable_panel.loc[index, asset_list],
+            metadata=metadata,
+            trades=self.trades_panel.loc[index, asset_list],
+        )
+        return DataStore(panels)
+
     def market_return_series(self, timestamps: pd.DatetimeIndex) -> pd.Series:
         close = self.close.reindex(timestamps)
         market = close.pct_change(fill_method=None).mean(axis=1).fillna(0.0)

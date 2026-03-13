@@ -88,11 +88,23 @@ def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, 
     turnover = float(result.turnover.mean()) if not result.turnover.empty else 0.0
     beta = beta_to_market(result.returns, result.returns - result.active_returns)
     max_abs = float(result.diagnostics.get("final_weight_diagnostics", {}).get("max_abs_weight", 0.0))
+    avg_child_orders = float(result.diagnostics.get("avg_child_orders_per_rebalance", 0.0))
+    skipped_notional_ratio = float(result.diagnostics.get("skipped_notional_ratio", 0.0))
     turnover_penalty = max(0.0, turnover - 0.35) * 1.25
     beta_penalty = max(0.0, abs(beta) - 0.10) * 3.0
     concentration_penalty = max(0.0, max_abs - 0.12) * 2.0
     instability_penalty = max(0.0, instability - 1.25) * 0.35
-    score = median_active_sharpe - turnover_penalty - beta_penalty - concentration_penalty - instability_penalty
+    capacity_penalty = 0.0
+    implementation_shortfall_penalty = skipped_notional_ratio * 4.0
+    score = (
+        median_active_sharpe
+        - turnover_penalty
+        - beta_penalty
+        - concentration_penalty
+        - instability_penalty
+        - capacity_penalty
+        - implementation_shortfall_penalty
+    )
     return score, {
         "rolling_median_active_sharpe": median_active_sharpe,
         "rolling_active_sharpe_iqr": instability,
@@ -100,6 +112,8 @@ def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, 
         "beta_penalty": beta_penalty,
         "concentration_penalty": concentration_penalty,
         "instability_penalty": instability_penalty,
+        "capacity_penalty": capacity_penalty,
+        "implementation_shortfall_penalty": implementation_shortfall_penalty,
     }
 
 
@@ -130,13 +144,18 @@ def evaluate_timestamps(
     timestamps: pd.DatetimeIndex,
     execution: ExecutionConfig | None = None,
     period_label: str = "custom",
+    bootstrap_samples: int = 200,
 ) -> dict:
     execution = execution or ExecutionConfig()
     if len(timestamps) == 0:
         raise ValueError("No timestamps provided for evaluation")
     result = run_backtest(strategy_module, data_store, timestamps=pd.DatetimeIndex(timestamps), execution=execution)
     market_returns = result.returns - result.active_returns
-    ci_low, ci_high = bootstrap_sharpe_ci(result.active_returns, execution.bars_per_year)
+    ci_low, ci_high = bootstrap_sharpe_ci(
+        result.active_returns,
+        execution.bars_per_year,
+        n_boot=bootstrap_samples,
+    )
     metrics = {
         "period": period_label,
         "bars": len(timestamps),
@@ -154,6 +173,12 @@ def evaluate_timestamps(
         "active_sharpe_ci": (ci_low, ci_high),
         "trade_count": int(result.diagnostics.get("trade_count", 0)),
         "filtered_assets_total": int(result.diagnostics.get("filtered_assets_total", 0)),
+        "avg_child_orders_per_rebalance": float(result.diagnostics.get("avg_child_orders_per_rebalance", 0.0)),
+        "avg_multi_order_assets_per_rebalance": float(result.diagnostics.get("avg_multi_order_assets_per_rebalance", 0.0)),
+        "fraction_rebalances_with_multi_order": float(result.diagnostics.get("fraction_rebalances_with_multi_order", 0.0)),
+        "skipped_notional_ratio": float(result.diagnostics.get("skipped_notional_ratio", 0.0)),
+        "skipped_notional_total_usd": float(result.diagnostics.get("skipped_notional_total_usd", 0.0)),
+        "implemented_delta_notional_total_usd": float(result.diagnostics.get("implemented_delta_notional_total_usd", 0.0)),
         "equity_curve": result.equity_curve,
         "active_returns_series": result.active_returns,
         "returns_series": result.returns,
@@ -187,6 +212,12 @@ def format_metrics(metrics: dict) -> str:
         "beta_penalty",
         "concentration_penalty",
         "instability_penalty",
+        "capacity_penalty",
+        "implementation_shortfall_penalty",
+        "avg_child_orders_per_rebalance",
+        "avg_multi_order_assets_per_rebalance",
+        "fraction_rebalances_with_multi_order",
+        "skipped_notional_ratio",
         "candidate_id",
     ]
     lines = []

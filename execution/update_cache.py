@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from q_lab_hl.cache import CacheBuildConfig, build_hyperliquid_cache
+from q_lab_hl.cache import CacheBuildConfig, build_hyperliquid_cache, validate_market_cache_dir
 from q_lab_hl.ingest import HyperliquidInfoClient
 
 
@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--refresh-days", type=int, default=45)
     parser.add_argument("--timeframe", default=None, help="Override timeframe instead of reading schema.json")
     parser.add_argument("--no-ssl-verify", action="store_true")
+    parser.add_argument("--max-data-lag-hours", type=float, default=3.0, help="Fail if the refreshed cache is older than this.")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -30,7 +31,7 @@ def main() -> None:
     coins = list(close.columns)
     schema_path = data_dir / "schema.json"
     schema = json.loads(schema_path.read_text()) if schema_path.exists() else {}
-    interval = args.timeframe or schema.get("interval", "1h")
+    interval = args.timeframe or schema.get("interval") or schema.get("config", {}).get("interval", "1h")
     start = (last_ts - pd.Timedelta(days=args.refresh_days)).isoformat()
     end = pd.Timestamp.now("UTC").tz_localize(None).floor("h").isoformat()
     client = HyperliquidInfoClient(verify_ssl=not args.no_ssl_verify)
@@ -41,6 +42,8 @@ def main() -> None:
                 start=start,
                 end=end,
                 interval=interval,
+                max_bars_per_call=int(schema.get("config", {}).get("max_bars_per_call", 5000)),
+                max_hours_per_funding_call=int(schema.get("config", {}).get("max_hours_per_funding_call", 24 * 30)),
             ),
             client=client,
             coins=coins,
@@ -59,9 +62,21 @@ def main() -> None:
             (data_dir / "metadata.json").write_text(metadata_src.read_text())
         if schema_src.exists():
             schema_payload = json.loads(schema_src.read_text())
-            schema_payload["start"] = schema.get("start", schema_payload.get("start"))
+            preserved_start = schema.get("config", {}).get("start", schema.get("start", schema_payload["config"].get("start")))
+            schema_payload["config"]["start"] = preserved_start
+            schema_payload["start"] = preserved_start
+            close_merged = pd.read_parquet(data_dir / "close.parquet")
+            schema_payload["bars"] = int(len(close_merged))
+            schema_payload["coins"] = list(close_merged.columns)
+            if len(close_merged.index):
+                schema_payload["end"] = str(pd.Timestamp(close_merged.index.max()))
             (data_dir / "schema.json").write_text(json.dumps(schema_payload, indent=2))
-    print(json.dumps({"status": "ok", "data_dir": str(data_dir), "start": start, "end": end, "coins": len(coins)}, indent=2))
+    validation = validate_market_cache_dir(
+        data_dir,
+        interval=interval,
+        max_data_lag_hours=args.max_data_lag_hours,
+    )
+    print(json.dumps({"status": "ok", "data_dir": str(data_dir), "start": start, "end": end, "coins": len(coins), "validation": validation}, indent=2))
 
 
 def merge_matrix(current: pd.DataFrame, fresh: pd.DataFrame, refresh_start: pd.Timestamp) -> pd.DataFrame:

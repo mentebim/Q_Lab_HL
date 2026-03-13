@@ -1,72 +1,82 @@
 {
+  "data_dir": "data/market_cache_1h",
+  "execution_overrides": {
+    "rebalance_every_bars": 24
+  },
+  "promotion": {
+    "policy_id": "promotion_policy_v1",
+    "policy_path": "autoresearch/promotion_policy.json",
+    "promoted_at": "2026-03-12T20:29:39.459055+00:00",
+    "promoted_from": "autoresearch/leaderboard.jsonl",
+    "selector_policy": "manual-bootstrap",
+    "stage": "live"
+  },
+  "live": {
+    "account_address": "0x70020BdEa6be894f6511d7cC0529ff1D73B51086",
+    "default_leverage": 3,
+    "kill_switch_path": "execution/STOP",
+    "leverage_overrides": {
+      "BTC": 4,
+      "ETH": 4
+    },
+    "log_dir": "execution/logs/live",
+    "max_data_lag_hours": 3.0,
+    "max_margin_usage_ratio": 0.8,
+    "max_single_order_notional_usd": 250.0,
+    "min_margin_headroom_usd": 50.0,
+    "min_trade_notional_usd": 10.0,
+    "mode": "live",
+    "network": "mainnet",
+    "paper_account_value": 250.0,
+    "secret_key_env": "HL_SECRET_KEY",
+    "slippage": 0.01,
+    "state_path": "execution/state.live.json",
+    "target_gross_notional_usd": null,
+    "target_margin_usage_ratio": 0.5,
+    "vault_address": null
+  },
   "source": {
-    "policy": "manual",
-    "experiment_id": "exp_rank_b5_ols",
     "candidate_id": "ols_rank_b5_3f",
-    "result_path": "autoresearch/results/2026-03-12T04_34_11.957371_00_00_exp_rank_b5_ols_accepted.json",
-    "note": "Research deployment candidate selected from overnight winner1 run"
+    "experiment_id": "exp_rank_b5_ols",
+    "note": "Pinned snapshot artifact rebuilt on 2026-03-12 after cache refresh and missing original result.",
+    "result_path": "autoresearch/results/2026-03-12T20_29_39.459055_00_00_exp_rank_b5_ols_pinned_snapshot.json"
   },
   "strategy_path": "strategy.py",
   "strategy_spec": {
-    "train_window_bars": 504,
+    "features": [
+      {
+        "clip": null,
+        "kind": "return",
+        "lookback": 1,
+        "name": "ret_1h",
+        "transform": "rank"
+      },
+      {
+        "clip": null,
+        "kind": "ma_gap",
+        "lookback": 24,
+        "name": "ma_gap_24h",
+        "transform": "rank"
+      },
+      {
+        "clip": null,
+        "kind": "funding_mean",
+        "lookback": 8,
+        "name": "funding_8h",
+        "transform": "rank"
+      }
+    ],
     "min_train_rows": 200,
-    "position_bucket": 5,
-    "target": {
-      "name": "next_bar_open_to_close",
-      "kind": "next_open_to_close_return"
-    },
     "model": {
       "family": "ols",
       "l2_reg": 0.0,
       "prediction_clip": 3.0
     },
-    "features": [
-      {
-        "name": "ret_1h",
-        "kind": "return",
-        "lookback": 1,
-        "transform": "rank",
-        "clip": null
-      },
-      {
-        "name": "ma_gap_24h",
-        "kind": "ma_gap",
-        "lookback": 24,
-        "transform": "rank",
-        "clip": null
-      },
-      {
-        "name": "funding_8h",
-        "kind": "funding_mean",
-        "lookback": 8,
-        "transform": "rank",
-        "clip": null
-      }
-    ]
-  },
-  "execution_overrides": {
-    "rebalance_every_bars": 24
-  },
-  "data_dir": "data/market_cache_1h",
-  "live": {
-    "mode": "live",
-    "network": "mainnet",
-    "account_address": "0x70020BdEa6be894f6511d7cC0529ff1D73B51086",
-    "vault_address": null,
-    "secret_key_env": "HL_SECRET_KEY",
-    "paper_account_value": 250.0,
-    "min_trade_notional_usd": 10.0,
-    "max_single_order_notional_usd": 250.0,
-    "slippage": 0.01,
-    "state_path": "execution/state.live.json",
-    "log_dir": "execution/logs/live",
-    "kill_switch_path": "execution/STOP",
-    "max_data_lag_hours": 3.0,
-    "target_gross_notional_usd": 1000.0,
-    "default_leverage": 3,
-    "leverage_overrides": {
-      "BTC": 4,
-      "ETH": 4
-    }
+    "position_bucket": 5,
+    "target": {
+      "kind": "next_open_to_close_return",
+      "name": "next_bar_open_to_close"
+    },
+    "train_window_bars": 504
   }
 }

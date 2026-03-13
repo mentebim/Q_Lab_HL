@@ -12,12 +12,14 @@ from strategy_model import (
     ModelSpec,
     StrategySpec,
     TargetSpec,
+    get_strategy_family,
     build_training_dataset,
     construct_portfolio,
     fit_linear_model,
     latest_snapshot,
     predict_scores,
     strategy_spec_from_dict,
+    validate_strategy_spec,
 )
 
 
@@ -44,6 +46,7 @@ DEFAULT_SPEC = StrategySpec(
 EXECUTION = DEFAULT_EXECUTION
 SPEC = DEFAULT_SPEC
 _STATE: dict = {}
+STRATEGY_FAMILY = "linear_cross_section_v1"
 
 
 def reset_state():
@@ -104,11 +107,14 @@ def apply_runtime_overrides(strategy_spec: dict | None = None, execution_overrid
     global EXECUTION, SPEC
     EXECUTION = DEFAULT_EXECUTION
     SPEC = DEFAULT_SPEC
+    family = get_strategy_family(STRATEGY_FAMILY)
+    validate_strategy_spec(SPEC, family)
     if strategy_spec:
-        SPEC = strategy_spec_from_dict(strategy_spec, base=DEFAULT_SPEC)
+        SPEC = strategy_spec_from_dict(strategy_spec, base=DEFAULT_SPEC, strategy_family=STRATEGY_FAMILY)
     if execution_overrides:
         EXECUTION = replace(DEFAULT_EXECUTION, **execution_overrides)
     _STATE["runtime_overrides"] = {
+        "strategy_family": family.summary(),
         "strategy_spec": SPEC.summary(),
         "execution": asdict(EXECUTION),
     }

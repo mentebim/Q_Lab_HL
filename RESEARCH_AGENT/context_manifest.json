@@ -1,0 +1,66 @@
+{
+  "bundle_id": "research_agent_v1",
+  "purpose": "Minimal context bundle for bounded quant autoresearch agents.",
+  "workspace_dir": ".research_agent_workspace",
+  "load_order": [
+    {
+      "path": "README.md",
+      "role": "repo_contract"
+    },
+    {
+      "path": "RESEARCH_PROMPT.md",
+      "role": "agent_instructions"
+    },
+    {
+      "path": "autoresearch/research_policy.json",
+      "role": "machine_policy"
+    },
+    {
+      "path": "autoresearch/candidate.template.json",
+      "role": "candidate_template"
+    },
+    {
+      "path": "autoresearch/config.agent.json",
+      "role": "active_candidate"
+    },
+    {
+      "path": "strategy_model.py",
+      "role": "strategy_family_boundary"
+    },
+    {
+      "path": "strategy.py",
+      "role": "active_strategy_entrypoint"
+    },
+    {
+      "path": "autoresearch/leaderboard.jsonl",
+      "role": "recent_experiment_history"
+    }
+  ],
+  "editable_paths": [
+    "autoresearch/",
+    "strategy.py",
+    "strategy_model.py"
+  ],
+  "fixed_paths": [
+    "RESEARCH_AGENT/",
+    "q_lab_hl/",
+    "autoresearch.py",
+    "run.py",
+    "pyproject.toml",
+    "data/market_cache_1h/"
+  ],
+  "excluded_paths": [
+    "execution/",
+    "execution/logs/",
+    "execution/state.json",
+    "execution/state.paper.json",
+    "execution/state.live.json",
+    "execution/champion.paper.json",
+    "execution/champion.live.json"
+  ],
+  "run_command": "python3 autoresearch.py --config autoresearch/config.agent.json",
+  "outputs": [
+    "autoresearch/results/",
+    "autoresearch/leaderboard.jsonl"
+  ]
+}

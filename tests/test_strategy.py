@@ -4,6 +4,7 @@ import unittest
 
 from q_lab_hl.backtest import load_strategy
 from q_lab_hl.data import DataStore
+from strategy_model import LINEAR_CROSS_SECTION_FAMILY, strategy_spec_from_dict
 
 
 class StatisticalStrategyTests(unittest.TestCase):
@@ -21,6 +22,24 @@ class StatisticalStrategyTests(unittest.TestCase):
         self.assertIn("funding_8h", summary["model_fit"]["coefficients"])
         self.assertIn("diagnostics", summary["model_fit"])
         self.assertEqual(summary["strategy_spec"]["target"]["kind"], "next_open_to_close_return")
+
+    def test_strategy_family_rejects_unsupported_feature_kind(self):
+        strategy = load_strategy("strategy.py")
+        with self.assertRaises(ValueError):
+            strategy_spec_from_dict(
+                {
+                    "features": [
+                        {
+                            "name": "bad_feature",
+                            "kind": "orderflow",
+                            "lookback": 1,
+                            "transform": "zscore",
+                        }
+                    ]
+                },
+                base=strategy.DEFAULT_SPEC,
+                strategy_family=LINEAR_CROSS_SECTION_FAMILY.family_id,
+            )
 
 
 if __name__ == "__main__":

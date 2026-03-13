@@ -27,6 +27,10 @@ class VenueConfig:
     default_leverage: int = 2
     leverage_overrides: dict[str, int] = field(default_factory=lambda: {"BTC": 3, "ETH": 3})
     target_gross_notional_usd: float | None = None
+    target_margin_usage_ratio: float | None = None
+    max_margin_usage_ratio: float = 0.80
+    min_margin_headroom_usd: float = 50.0
+    fills_lookback_hours: float = 72.0
 
     def base_url(self) -> str:
         return TESTNET_API_URL if self.network == "testnet" else MAINNET_API_URL
@@ -35,6 +39,20 @@ class VenueConfig:
         payload = asdict(self)
         payload["base_url"] = self.base_url()
         return payload
+
+
+@dataclass(frozen=True)
+class ReconciliationSnapshot:
+    account_address: str | None
+    account_value: float
+    positions: dict[str, float]
+    open_orders: list[dict[str, Any]]
+    recent_fills: list[dict[str, Any]]
+    snapshot_time_ms: int
+    mode: str
+
+    def summary(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class HyperliquidExecutionClient:
@@ -69,6 +87,44 @@ class HyperliquidExecutionClient:
         summary = raw.get("marginSummary") or raw.get("crossMarginSummary") or {}
         return float(summary.get("accountValue", 0.0))
 
+    def reconciliation_snapshot(
+        self,
+        state: dict[str, Any],
+        *,
+        fills_since_ms: int | None = None,
+    ) -> ReconciliationSnapshot:
+        snapshot_time_ms = self._timestamp_ms()
+        if self.venue.mode == "paper":
+            fills = list(state.get("paper_fills", []))
+            if fills_since_ms is not None:
+                fills = [fill for fill in fills if int(fill.get("time", 0) or 0) >= int(fills_since_ms)]
+            return ReconciliationSnapshot(
+                account_address=self.venue.account_address,
+                account_value=float(self.venue.paper_account_value),
+                positions={coin: float(sz) for coin, sz in state.get("paper_positions", {}).items()},
+                open_orders=[],
+                recent_fills=fills,
+                snapshot_time_ms=snapshot_time_ms,
+                mode=self.venue.mode,
+            )
+        address = self._require_account_address()
+        raw = self._info.user_state(address)
+        summary = raw.get("marginSummary") or raw.get("crossMarginSummary") or {}
+        positions = self._extract_positions(raw)
+        lookback_ms = int(self.venue.fills_lookback_hours * 3600 * 1000)
+        start_time = int(fills_since_ms) if fills_since_ms is not None else max(snapshot_time_ms - lookback_ms, 0)
+        fills = self._info.user_fills_by_time(address, start_time, snapshot_time_ms, True)
+        open_orders = self._info.open_orders(address)
+        return ReconciliationSnapshot(
+            account_address=address,
+            account_value=float(summary.get("accountValue", 0.0)),
+            positions=positions,
+            open_orders=list(open_orders or []),
+            recent_fills=list(fills or []),
+            snapshot_time_ms=snapshot_time_ms,
+            mode=self.venue.mode,
+        )
+
     def mid_prices(self, coins: list[str]) -> dict[str, float]:
         if self._info is None:
             return {}
@@ -82,26 +138,30 @@ class HyperliquidExecutionClient:
 
     def _apply_paper(self, instructions, state: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         positions = dict(state.get("paper_positions", {}))
+        paper_fills = list(state.get("paper_fills", []))
         fills = []
         for instruction in instructions:
             if instruction.status != "trade":
                 fills.append({"coin": instruction.coin, "status": instruction.status, "reason": instruction.reason})
                 continue
-            positions[instruction.coin] = instruction.target_size
+            positions[instruction.coin] = float(positions.get(instruction.coin, 0.0)) + float(instruction.delta_size)
             if abs(positions[instruction.coin]) <= 1e-12:
                 positions.pop(instruction.coin, None)
-            fills.append(
-                {
-                    "coin": instruction.coin,
-                    "status": "filled",
-                    "side": instruction.side,
-                    "size": instruction.delta_size,
-                    "price": instruction.price,
-                    "mode": "paper",
-                }
-            )
+            fill = {
+                "coin": instruction.coin,
+                "status": "filled",
+                "side": instruction.side,
+                "size": instruction.delta_size,
+                "price": instruction.price,
+                "mode": "paper",
+                "execution_stage": instruction.execution_stage,
+                "time": self._timestamp_ms(),
+            }
+            fills.append(fill)
+            paper_fills.append(fill)
         next_state = dict(state)
         next_state["paper_positions"] = positions
+        next_state["paper_fills"] = paper_fills[-500:]
         return fills, next_state
 
     def _apply_live(self, instructions, state: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -114,22 +174,9 @@ class HyperliquidExecutionClient:
             leverage_response = self._set_leverage(instruction.coin, leverage)
             if leverage_response is not None:
                 fills.append({"coin": instruction.coin, "status": "set_leverage", "leverage": leverage, "response": leverage_response})
-            if instruction.current_size != 0.0 and instruction.target_size == 0.0:
-                response = self._submit_close(instruction.coin, abs(instruction.current_size), instruction.price)
-                fills.append({"coin": instruction.coin, "status": "submitted_close", "response": response})
-                continue
-            if instruction.current_size * instruction.target_size < 0.0 and instruction.current_size != 0.0:
-                close_response = self._submit_close(instruction.coin, abs(instruction.current_size), instruction.price)
-                fills.append({"coin": instruction.coin, "status": "submitted_close", "response": close_response})
-                open_response = self._submit_open_with_retry(
-                    instruction.coin,
-                    is_buy=instruction.target_size > 0.0,
-                    sz=abs(instruction.target_size),
-                    px=instruction.price,
-                    slippage=self.venue.slippage,
-                    size_decimals=getattr(instruction, 'size_decimals', 4),
-                )
-                fills.append({"coin": instruction.coin, "status": "submitted_open", "response": open_response})
+            if instruction.execution_stage in {"close", "decrease", "flip_close"}:
+                response = self._submit_close(instruction.coin, abs(instruction.delta_size), instruction.price)
+                fills.append({"coin": instruction.coin, "status": "submitted_close", "execution_stage": instruction.execution_stage, "response": response})
                 continue
             response = self._submit_open_with_retry(
                 instruction.coin,
@@ -139,7 +186,7 @@ class HyperliquidExecutionClient:
                 slippage=self.venue.slippage,
                 size_decimals=getattr(instruction, 'size_decimals', 4),
             )
-            fills.append({"coin": instruction.coin, "status": "submitted_delta", "response": response})
+            fills.append({"coin": instruction.coin, "status": "submitted_open", "execution_stage": instruction.execution_stage, "response": response})
         return fills, dict(state)
 
 
@@ -221,3 +268,17 @@ class HyperliquidExecutionClient:
         if not address:
             raise RuntimeError("`account_address` or `vault_address` is required for paper/live position reconciliation.")
         return address
+
+    def _extract_positions(self, raw: dict[str, Any]) -> dict[str, float]:
+        positions = {}
+        for row in raw.get("assetPositions", []):
+            position = row.get("position", {})
+            coin = position.get("coin")
+            if not coin:
+                continue
+            positions[coin] = float(position.get("szi", 0.0))
+        return positions
+
+    def _timestamp_ms(self) -> int:
+        import time
+        return int(time.time() * 1000)

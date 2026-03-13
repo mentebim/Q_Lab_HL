@@ -4,9 +4,10 @@ This directory is the thin live-execution layer on top of the fixed research har
 
 ## Files
 
-- `champion.json`: pinned live strategy spec
+- `champion.paper.json`: pinned paper promotion target
+- `champion.live.json`: pinned live promotion target
 - `run_live.py`: run one hourly execution cycle
-- `select_champion.py`: write `champion.json` from leaderboard/result files
+- `select_champion.py`: promote a paper or live champion from leaderboard results
 - `update_cache.py`: refresh the trailing market-cache window
 - `state.py`: idempotency and paper-position state
 - `portfolio_live.py`: convert target weights into executable deltas
@@ -21,25 +22,31 @@ This directory is the thin live-execution layer on top of the fixed research har
 python -m execution.update_cache --data-dir data/market_cache_1h
 ```
 
-2. Pin the live champion explicitly:
+2. Promote the paper champion explicitly:
 
 ```bash
-python -m execution.select_champion --policy best-accepted --out execution/champion.json
+python -m execution.select_champion --stage paper --out execution/champion.paper.json
 ```
 
-3. Run one paper execution cycle:
+3. Promote the live champion explicitly after paper review:
+
+```bash
+python -m execution.select_champion --stage live --out execution/champion.live.json
+```
+
+4. Run one paper execution cycle:
 
 ```bash
 python -m execution.run_live --champion execution/champion.paper.json
 ```
 
-4. Run one live execution cycle with the same champion strategy but separate runtime state/logs:
+5. Run one live execution cycle with the same champion strategy but separate runtime state/logs:
 
 ```bash
 python -m execution.run_live --champion execution/champion.live.json
 ```
 
-5. Fill these fields before real trading:
+6. Fill these fields before real trading:
 
 - `live.account_address`
 - `live.secret_key_env`
@@ -61,7 +68,7 @@ For hourly cron use two steps, not one:
 
 ```cron
 2 * * * * cd /Users/marcosentebi/Q_Lab_HL && /users/marcosentebi/anaconda3/envs/vscode/bin/python -m execution.update_cache >> execution/update.log 2>&1
-5 * * * * cd /Users/marcosentebi/Q_Lab_HL && /users/marcosentebi/anaconda3/envs/vscode/bin/python -m execution.run_live --champion execution/champion.json >> execution/live.log 2>&1
+5 * * * * cd /Users/marcosentebi/Q_Lab_HL && /users/marcosentebi/anaconda3/envs/vscode/bin/python -m execution.run_live --champion execution/champion.live.json >> execution/live.log 2>&1
 ```
 
 `launchd` is preferred on macOS once the paper loop is stable.
@@ -69,7 +76,7 @@ For hourly cron use two steps, not one:
 ## Safety Defaults
 
 - default mode is `paper`
-- one champion only
+- one paper champion and one live champion
 - refuse to trade stale data
 - refuse to trade the same signal bar twice unless `--force`
 - kill switch file: `execution/STOP`

@@ -4,8 +4,6 @@ import json
 import ssl
 import time
 import urllib.request
-from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -49,7 +47,17 @@ class HyperliquidInfoClient:
 def fetch_candles_chunked(client, coin: str, interval: str, start, end, max_bars_per_call: int = 5000) -> pd.DataFrame:
     start_ts = _parse_range_bound(start, is_end=False)
     end_ts = _parse_range_bound(end, is_end=True)
-    rows = client.candle_snapshot(coin, interval, _to_ms(start_ts), _to_ms(end_ts))
+    if start_ts > end_ts:
+        return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "trades"])
+    step = _interval_to_timedelta(interval)
+    bars_per_call = max(int(max_bars_per_call), 1)
+    chunk_span = step * bars_per_call
+    rows = []
+    cursor = start_ts
+    while cursor <= end_ts:
+        chunk_end = min(end_ts, cursor + chunk_span - pd.Timedelta(milliseconds=1))
+        rows.extend(client.candle_snapshot(coin, interval, _to_ms(cursor), _to_ms(chunk_end)) or [])
+        cursor = chunk_end + pd.Timedelta(milliseconds=1)
     if not rows:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "trades"])
     frame = pd.DataFrame(rows)
@@ -65,7 +73,15 @@ def fetch_candles_chunked(client, coin: str, interval: str, start, end, max_bars
 def fetch_funding_chunked(client, coin: str, start, end, max_hours_per_call: int = 24 * 30) -> pd.DataFrame:
     start_ts = _parse_range_bound(start, is_end=False)
     end_ts = _parse_range_bound(end, is_end=True)
-    rows = client.funding_history(coin, _to_ms(start_ts), _to_ms(end_ts))
+    if start_ts > end_ts:
+        return pd.DataFrame(columns=["date", "funding_rate", "premium"])
+    chunk_span = pd.Timedelta(hours=max(int(max_hours_per_call), 1))
+    rows = []
+    cursor = start_ts
+    while cursor <= end_ts:
+        chunk_end = min(end_ts, cursor + chunk_span - pd.Timedelta(milliseconds=1))
+        rows.extend(client.funding_history(coin, _to_ms(cursor), _to_ms(chunk_end)) or [])
+        cursor = chunk_end + pd.Timedelta(milliseconds=1)
     if not rows:
         return pd.DataFrame(columns=["date", "funding_rate", "premium"])
     frame = pd.DataFrame(rows)

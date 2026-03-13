@@ -1,5 +1,8 @@
 {
-  "bars": 9573,
+  "provider": "hyperliquid",
+  "schema_version": 1,
+  "written_at": "2026-03-12T20:19:43.860895+00:00",
+  "bars": 9620,
   "coins": [
     "AAVE",
     "BCH",
@@ -22,17 +25,17 @@
     "ZEC",
     "kPEPE"
   ],
+  "interval": "1h",
+  "start": "2020-01-01",
+  "end": "2026-03-12 20:00:00",
   "config": {
-    "end": "2026-03-10T21:55:30.753562",
-    "include_delisted": false,
-    "interval": "1h",
-    "max_bars_per_call": 500,
-    "max_hours_per_funding_call": 2000,
-    "min_current_day_ntl_vlm": null,
     "start": "2020-01-01",
-    "top_n": 20
-  },
-  "provider": "hyperliquid",
-  "schema_version": 1,
-  "written_at": "2026-03-10T22:25:34.628608"
+    "end": "2026-03-12T20:00:00",
+    "interval": "1h",
+    "include_delisted": false,
+    "top_n": null,
+    "min_current_day_ntl_vlm": null,
+    "max_bars_per_call": 500,
+    "max_hours_per_funding_call": 2000
+  }
 }
