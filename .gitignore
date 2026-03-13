@@ -19,8 +19,10 @@ artifacts/
 registries/
 .cache/
 __pycache__/
-data/market_cache_1h/raw/
 autoresearch/results/
+execution/logs/
+execution/state*.json
+.research_agent_workspace/
 
 # Agent prompt files
 CLAUDE.md
@@ -28,6 +30,3 @@ AGENTS.md
 
 # Dev scratch
 dev/
-
-# Research workspace
-.research_agent_workspace/

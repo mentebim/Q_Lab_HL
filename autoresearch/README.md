@@ -1,29 +1,27 @@
-# Autoresearch Layer
+# Research Inputs
 
-This directory holds the human-owned research contract and the machine-operable candidate artifacts.
+This branch does not generate research.
 
-## Files
+This directory exists only to receive synced research outputs from `AgentHL`.
 
-- `research_policy.json`: repo mission and mutation boundary
-- `candidate.template.json`: template for new bounded candidates
-- `config.agent.json`: default active candidate spec
-- `leaderboard.jsonl`: append-only summary log
-- `results/`: detailed experiment artifacts, ignored by git
+## Files Used Here
 
-## Intended Loop
+- `leaderboard.jsonl`: summary of candidate results
+- `results/`: detailed result artifacts, usually ignored by git
+- `promotion_policy.json`: policy used by the promotion selector
 
-1. Read `RESEARCH_PROMPT.md`.
-2. Start from `candidate.template.json` or `config.agent.json`.
-3. Run `python3 autoresearch.py --config <candidate>.json`.
-4. Inspect the emitted result artifact and leaderboard row.
-5. Check whether the candidate passed the express filter.
-6. Mutate bounded candidate parameters, not the judge.
-7. Promote only valid accepted candidates.
+## What Promotion Reads
 
-## Design Intent
+Promotion expects each winning result artifact to contain:
 
-- The judge lives outside this directory.
-- This directory should express research policy and candidate objects, not hidden evaluator changes.
-- Most experiments should be JSON mutations inside an approved strategy family.
-- The express filter is a cheap first-stage gate, not a replacement for the full judge.
-- Results should remain branch-local and machine-readable.
+- `acceptance`
+- `express_filter`
+- `promotion_eligibility`
+- `result_path`
+- strategy/spec metadata
+
+## Handoff
+
+`AgentHL` produces these files.
+
+This branch reads them and converts eligible winners into champion files under `execution/`.

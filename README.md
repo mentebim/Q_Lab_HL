@@ -1,125 +1,57 @@
-# Q_Lab_HL
+# Q_Lab_HL Promotion
 
-Q_Lab_HL is a constrained autoresearch repo for Hyperliquid quant strategies.
+This branch is the promotion layer only.
 
-The repo is not a general trading sandbox. Its job is to support one loop only:
+Its job is narrow:
 
-1. define a bounded candidate inside an approved strategy family
-2. run a fast express filter
-3. evaluate survivors with the fixed judge
-4. promote only accepted candidates
-5. execute only promoted champions in paper or live mode
+1. read synced research artifacts from `AgentHL`
+2. apply promotion policy
+3. pin `champion.paper.json` or `champion.live.json`
 
-## Architecture
+It does not run research.
+It does not own market data.
+It does not execute trades.
 
-- `autoresearch/`: human-owned research policy, candidate specs, leaderboard, and result artifacts
-- `strategy.py`: current approved strategy entrypoint
-- `strategy_model.py`: approved model-family implementation surface
-- `q_lab_hl/`: fixed judge modules for data, backtest, and evaluation
-- `execution/`: thin promotion and execution layer for pinned champions
-- `data/market_cache_1h/`: local Hyperliquid market cache
+## Inputs
 
-## Repo Contract
+- `autoresearch/leaderboard.jsonl`
+- `autoresearch/results/*.json`
+- `autoresearch/promotion_policy.json`
+- existing champion files under `execution/`
 
-The repo has three hard separations:
+## Outputs
 
-- fixed judge
-  `q_lab_hl/data.py`, `q_lab_hl/backtest.py`, `q_lab_hl/evaluate.py`, and most of `q_lab_hl/config.py`
-- bounded research surface
-  candidate specs, approved strategy-family parameters, and limited strategy/model code
-- gated execution
-  only pinned champions are eligible for paper or live execution
+- `execution/champion.paper.json`
+- `execution/champion.live.json`
 
-Agents should not mutate the judge as part of normal research.
+## Core Command
 
-## Research Objects
-
-The object model is moving toward explicit research contracts:
-
-- `ResearchPolicy`: human-owned mission and mutation boundary
-- `StrategyFamily`: approved model family and mutable parameter surface
-- `CandidateSpec`: one bounded candidate for evaluation
-- `ExpressFilterConfig`: fast first-stage gate before the full judge
-- `AcceptancePolicy`: judge thresholds and comparison rules
-- `RecordingConfig`: result and leaderboard output settings
-
-Current defaults live in:
-
-- [autoresearch/research_policy.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/research_policy.json)
-- [autoresearch/candidate.template.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/candidate.template.json)
-- [autoresearch/config.agent.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/config.agent.json)
-
-## Allowed Degrees Of Freedom
-
-Normal research should mostly mutate:
-
-- `strategy_spec`
-- selected `execution_overrides`
-- approved model-family parameters
-- candidate metadata in `autoresearch/`
-
-Normal research should not mutate:
-
-- data ingestion semantics
-- backtest rules
-- evaluation logic
-- live execution plumbing
-
-## Core Commands
-
-Install dependencies:
+Promote the paper champion:
 
 ```bash
-python3 -m pip install -e .
+python3 -m execution.select_champion --stage paper --out execution/champion.paper.json
 ```
 
-Evaluate the current strategy on real data:
+Promote the live champion:
 
 ```bash
-python3 run.py --evaluate --data-dir data/market_cache_1h --period outer --json --show-fit
+python3 -m execution.select_champion --stage live --out execution/champion.live.json
 ```
 
-Run bounded autoresearch from a candidate spec:
+## Contract
 
-```bash
-python3 autoresearch.py --config autoresearch/config.agent.json
-```
+Promotion only accepts artifacts that are:
 
-Refresh the local cache:
+- accepted by the fixed judge
+- express-filter passed
+- marked promotion-eligible
+- present on disk as valid result artifacts
 
-```bash
-python3 -m execution.update_cache --data-dir data/market_cache_1h
-```
-
-Run one paper execution cycle for the pinned champion:
-
-```bash
-python3 -m execution.run_live --champion execution/champion.paper.json
-```
-
-## Promotion Model
-
-Promotion is intentionally conservative:
-
-- candidate research result
-- accepted result artifact
-- pinned paper champion
-- monitored paper behavior
-- pinned live champion
-
-Automatic execution is for promoted champions only.
-
-## Current Roadmap
-
-- Done: repo identity cleanup and explicit research object model
-- Done: strategy family registry and bounded mutation contract
-- Done: staged promotion pipeline cleanup
-- Done: Phase 6 express filter for faster research throughput
-- Next: final integration cleanup around research-to-promotion handoff
+Live promotion may additionally require matching the current paper champion candidate.
 
 ## Tests
 
-Run the suite with:
+Run:
 
 ```bash
 python3 -m unittest discover -s tests
