@@ -18,7 +18,7 @@ This directory holds the human-owned research contract and the machine-operable 
 4. Inspect the emitted result artifact and leaderboard row.
 5. Check whether the candidate passed the express filter.
 6. Mutate bounded candidate parameters, not the judge.
-7. Promote only valid accepted candidates.
+7. Hand off valid accepted and promotion-eligible artifacts to the `Promotion` branch.
 
 ## Design Intent
 
