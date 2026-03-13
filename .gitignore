@@ -21,6 +21,8 @@ registries/
 __pycache__/
 data/market_cache_1h/raw/
 autoresearch/results/
+execution/logs/
+execution/state*.json
 
 # Agent prompt files
 CLAUDE.md

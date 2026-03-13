@@ -1,125 +1,60 @@
-# Q_Lab_HL
+# Q_Lab_HL Execution
 
-Q_Lab_HL is a constrained autoresearch repo for Hyperliquid quant strategies.
+This branch is the execution layer only.
 
-The repo is not a general trading sandbox. Its job is to support one loop only:
+Its job is narrow:
 
-1. define a bounded candidate inside an approved strategy family
-2. run a fast express filter
-3. evaluate survivors with the fixed judge
-4. promote only accepted candidates
-5. execute only promoted champions in paper or live mode
+1. read pinned champions
+2. load trusted market cache
+3. mechanically refit the pinned strategy on fresh data
+4. calculate target positions
+5. trade them in paper or live mode
 
-## Architecture
+It does not run research search.
+It does not decide promotion.
 
-- `autoresearch/`: human-owned research policy, candidate specs, leaderboard, and result artifacts
-- `strategy.py`: current approved strategy entrypoint
-- `strategy_model.py`: approved model-family implementation surface
-- `q_lab_hl/`: fixed judge modules for data, backtest, and evaluation
-- `execution/`: thin promotion and execution layer for pinned champions
-- `data/market_cache_1h/`: local Hyperliquid market cache
+## Inputs
 
-## Repo Contract
+- `execution/champion.paper.json`
+- `execution/champion.live.json`
+- `autoresearch/results/*.json` referenced by champion files
+- `data/market_cache_1h/`
+- Hyperliquid account state and credentials
 
-The repo has three hard separations:
+## Execution Contract
 
-- fixed judge
-  `q_lab_hl/data.py`, `q_lab_hl/backtest.py`, `q_lab_hl/evaluate.py`, and most of `q_lab_hl/config.py`
-- bounded research surface
-  candidate specs, approved strategy-family parameters, and limited strategy/model code
-- gated execution
-  only pinned champions are eligible for paper or live execution
+Execution must:
 
-Agents should not mutate the judge as part of normal research.
+- respect `rebalance_every_bars`
+- reconcile account state before trading
+- read actual HL account value in live mode
+- size positions from the configured margin budget
+- treat all wallet capital as strategy capital while still leaving configured margin headroom
 
-## Research Objects
+The key sizing controls are:
 
-The object model is moving toward explicit research contracts:
-
-- `ResearchPolicy`: human-owned mission and mutation boundary
-- `StrategyFamily`: approved model family and mutable parameter surface
-- `CandidateSpec`: one bounded candidate for evaluation
-- `ExpressFilterConfig`: fast first-stage gate before the full judge
-- `AcceptancePolicy`: judge thresholds and comparison rules
-- `RecordingConfig`: result and leaderboard output settings
-
-Current defaults live in:
-
-- [autoresearch/research_policy.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/research_policy.json)
-- [autoresearch/candidate.template.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/candidate.template.json)
-- [autoresearch/config.agent.json](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/autoresearch/config.agent.json)
-
-## Allowed Degrees Of Freedom
-
-Normal research should mostly mutate:
-
-- `strategy_spec`
-- selected `execution_overrides`
-- approved model-family parameters
-- candidate metadata in `autoresearch/`
-
-Normal research should not mutate:
-
-- data ingestion semantics
-- backtest rules
-- evaluation logic
-- live execution plumbing
+- `target_margin_usage_ratio`
+- `max_margin_usage_ratio`
+- `min_margin_headroom_usd`
+- per-coin leverage settings from the champion runtime config
 
 ## Core Commands
 
-Install dependencies:
-
-```bash
-python3 -m pip install -e .
-```
-
-Evaluate the current strategy on real data:
-
-```bash
-python3 run.py --evaluate --data-dir data/market_cache_1h --period outer --json --show-fit
-```
-
-Run bounded autoresearch from a candidate spec:
-
-```bash
-python3 autoresearch.py --config autoresearch/config.agent.json
-```
-
-Refresh the local cache:
-
-```bash
-python3 -m execution.update_cache --data-dir data/market_cache_1h
-```
-
-Run one paper execution cycle for the pinned champion:
+Paper:
 
 ```bash
 python3 -m execution.run_live --champion execution/champion.paper.json
 ```
 
-## Promotion Model
+Live:
 
-Promotion is intentionally conservative:
-
-- candidate research result
-- accepted result artifact
-- pinned paper champion
-- monitored paper behavior
-- pinned live champion
-
-Automatic execution is for promoted champions only.
-
-## Current Roadmap
-
-- Done: repo identity cleanup and explicit research object model
-- Done: strategy family registry and bounded mutation contract
-- Done: staged promotion pipeline cleanup
-- Done: Phase 6 express filter for faster research throughput
-- Next: final integration cleanup around research-to-promotion handoff
+```bash
+python3 -m execution.run_live --champion execution/champion.live.json
+```
 
 ## Tests
 
-Run the suite with:
+Run:
 
 ```bash
 python3 -m unittest discover -s tests
