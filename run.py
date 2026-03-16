@@ -22,7 +22,7 @@ def main() -> None:
     parser.add_argument("--strategy-path", type=str, default="strategy.py")
     parser.add_argument("--strategy-spec", type=str, default=None, help="Path to a JSON file with strategy spec overrides.")
     parser.add_argument("--execution-overrides", type=str, default=None, help="Path to a JSON file with execution overrides.")
-    parser.add_argument("--cache-dir", type=str, default="data/market_cache_1h", help="Directory for built market cache or backtest input")
+    parser.add_argument("--cache-dir", type=str, default="data/active_1h/machine", help="Directory for backtest input")
     parser.add_argument("--start", type=str, default="2025-01-01", help="Cache build start timestamp")
     parser.add_argument("--end", type=str, default=None, help="Cache build end timestamp")
     parser.add_argument("--timeframe", type=str, default="1h", help="Hyperliquid candle interval, e.g. 15m, 1h, 4h")

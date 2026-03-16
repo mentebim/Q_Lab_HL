@@ -86,7 +86,7 @@ def build_workspace(
     for relative_path in plan["fixed"]:
         source = source_root / relative_path
         target = output_root / relative_path
-        if relative_path == "data/market_cache_1h" and data_mode == "link":
+        if relative_path.startswith("data/") and data_mode == "link":
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
             continue

@@ -31,7 +31,7 @@
   "execution_overrides": {
     "rebalance_every_bars": 24
   },
-  "data_dir": "data/market_cache_1h",
+  "data_dir": "data/active_1h/machine",
   "synthetic": false,
   "evaluation_periods": [
     "inner",
@@ -41,7 +41,7 @@
   "express_filter": {
     "enabled": true,
     "period": "outer",
-    "trailing_bars": 1440,
+    "trailing_bars": 2880,
     "max_assets": 12,
     "bootstrap_samples": 50,
     "primary_metric": "score_inner",

@@ -47,7 +47,8 @@
     "autoresearch.py",
     "run.py",
     "pyproject.toml",
-    "data/market_cache_1h/"
+    "data/active_1h/",
+    "data/archive_1h/"
   ],
   "excluded_paths": [
     "execution/",

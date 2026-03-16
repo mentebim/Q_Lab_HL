@@ -19,7 +19,9 @@ It does not own live execution.
 - `strategy.py`: active strategy entrypoint
 - `strategy_model.py`: approved strategy-family surface
 - `q_lab_hl/`: fixed judge modules needed for research evaluation
-- `data/market_cache_1h/`: local read-only market cache for evaluation
+- `data/active_1h/`: rolling active hourly dataset with CSV export at the top level
+- `data/archive_1h/`: hourly archive for all tracked assets ever admitted by the selector, also with CSV export
+- `data/*/machine/`: parquet panels consumed by the agent and evaluator
 
 ## Research Contract
 

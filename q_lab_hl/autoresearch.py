@@ -222,13 +222,12 @@ def run_express_filter(
     express_store, data_summary = build_express_data_store(data_store, config)
     try:
         usable_index = strategy_warmup_timestamps(express_store, execution)
-        period_index = getattr(build_time_slices(usable_index), config.period)
         metrics = evaluate_timestamps(
             strategy_module,
             express_store,
-            timestamps=period_index,
+            timestamps=usable_index,
             execution=execution,
-            period_label=config.period,
+            period_label="express_all",
             bootstrap_samples=config.bootstrap_samples,
         )
         metrics = compact_metrics(metrics)

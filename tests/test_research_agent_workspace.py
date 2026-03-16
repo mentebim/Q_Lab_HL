@@ -35,8 +35,10 @@ class ResearchAgentWorkspaceTests(unittest.TestCase):
             (root / "q_lab_hl").mkdir()
             (root / "q_lab_hl" / "judge.py").write_text("x = 1\n")
             (root / "data").mkdir()
-            (root / "data" / "market_cache_1h").mkdir(parents=True)
-            (root / "data" / "market_cache_1h" / "schema.json").write_text("{}")
+            (root / "data" / "active_1h").mkdir(parents=True)
+            (root / "data" / "active_1h" / "schema.json").write_text("{}")
+            (root / "data" / "archive_1h").mkdir(parents=True)
+            (root / "data" / "archive_1h" / "schema.json").write_text("{}")
             (root / "strategy.py").write_text("VALUE = 1\n")
             (root / "strategy_model.py").write_text("MODEL = 1\n")
             (root / "README.md").write_text("# repo\n")
@@ -49,7 +51,7 @@ class ResearchAgentWorkspaceTests(unittest.TestCase):
                 "workspace_dir": ".research_agent_workspace",
                 "load_order": [{"path": "README.md"}, {"path": "RESEARCH_PROMPT.md"}],
                 "editable_paths": ["autoresearch/", "strategy.py", "strategy_model.py"],
-                "fixed_paths": ["q_lab_hl/", "autoresearch.py", "run.py", "pyproject.toml", "data/market_cache_1h/"],
+                "fixed_paths": ["q_lab_hl/", "autoresearch.py", "run.py", "pyproject.toml", "data/active_1h/", "data/archive_1h/"],
                 "excluded_paths": ["execution/"],
                 "run_command": "python3 autoresearch.py --config autoresearch/config.agent.json",
             }

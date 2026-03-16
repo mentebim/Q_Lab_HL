@@ -43,7 +43,8 @@ The agent should not:
 ## Fixed Surface
 
 - `q_lab_hl/`
-- `data/market_cache_1h/`
+- `data/active_1h/`
+- `data/archive_1h/`
 
 ## Excluded Surface
 

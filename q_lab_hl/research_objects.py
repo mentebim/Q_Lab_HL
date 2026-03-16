@@ -103,7 +103,7 @@ class CandidateSpec:
     research_policy_path: str = DEFAULT_RESEARCH_POLICY_PATH
     strategy_spec: dict[str, Any] | None = None
     execution_overrides: dict[str, Any] | None = None
-    data_dir: str = "data/market_cache_1h"
+    data_dir: str = "data/active_1h/machine"
     synthetic: bool = False
     evaluation_periods: tuple[str, ...] = ("inner", "outer")
     notes: str = ""

@@ -32,7 +32,7 @@ class DataStore:
         self.high = _clean_matrix(panels.high).reindex_like(self.close).ffill()
         self.low = _clean_matrix(panels.low).reindex_like(self.close).ffill()
         self.volume = _clean_matrix(panels.volume).reindex_like(self.close).fillna(0.0)
-        self.funding_panel = _optional_matrix(panels.funding, self.close)
+        self.funding_panel = _optional_matrix(panels.funding, self.close, fill_value=None)
         self.oi_panel = _optional_matrix(panels.open_interest, self.close)
         self.tradable_panel = _tradable_matrix(panels.tradable, self.close)
         self.trades_panel = _optional_matrix(panels.trades, self.close).fillna(0.0)
@@ -289,10 +289,14 @@ def _clean_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     return cleaned.apply(pd.to_numeric, errors="coerce")
 
 
-def _optional_matrix(frame: pd.DataFrame | None, template: pd.DataFrame) -> pd.DataFrame:
+def _optional_matrix(frame: pd.DataFrame | None, template: pd.DataFrame, fill_value: float | None = 0.0) -> pd.DataFrame:
     if frame is None:
-        return pd.DataFrame(0.0, index=template.index, columns=template.columns)
-    return _clean_matrix(frame).reindex(index=template.index, columns=template.columns).fillna(0.0)
+        default = np.nan if fill_value is None else fill_value
+        return pd.DataFrame(default, index=template.index, columns=template.columns)
+    matrix = _clean_matrix(frame).reindex(index=template.index, columns=template.columns)
+    if fill_value is None:
+        return matrix
+    return matrix.fillna(fill_value)
 
 
 def _tradable_matrix(frame: pd.DataFrame | None, template: pd.DataFrame) -> pd.DataFrame:

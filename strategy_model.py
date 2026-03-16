@@ -413,9 +413,9 @@ def _build_feature_frames(
             frames[spec.name] = close / moving_average - 1.0
         elif spec.kind == "funding_mean":
             if funding.empty:
-                frames[spec.name] = pd.DataFrame(0.0, index=close.index, columns=close.columns)
+                frames[spec.name] = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
             else:
-                frames[spec.name] = funding.rolling(spec.lookback).mean().reindex_like(close).fillna(0.0)
+                frames[spec.name] = funding.rolling(spec.lookback).mean().reindex_like(close)
         else:
             raise ValueError(f"Unsupported feature kind '{spec.kind}'")
     return frames
