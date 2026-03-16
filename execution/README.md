@@ -1,60 +1,55 @@
-# Execution Layer
+# execution
 
-This directory is the thin live-execution layer on top of the fixed research harness.
+This folder represents the `Execution` production branch.
 
-## Files
+That branch is the runtime trading service that should be deployed.
 
-- `champion.json`: pinned live strategy spec
-- `run_live.py`: run one hourly execution cycle
-- `select_champion.py`: write `champion.json` from leaderboard/result files
-- `update_cache.py`: refresh the trailing market-cache window
-- `state.py`: idempotency and paper-position state
-- `portfolio_live.py`: convert target weights into executable deltas
-- `exchange_hl.py`: Hyperliquid paper/live venue wrapper
-- `risk.py`: kill switch and pre-trade checks
+## Structure
 
-## Recommended Hourly Flow
+- `inputs/`: what execution consumes
+- `process/`: runtime trading behavior
+- `outputs/`: what execution emits
 
-1. Refresh the trailing local cache:
+## Responsibility
 
-```bash
-python -m execution.update_cache --data-dir data/market_cache_1h
-```
+- read pinned paper or live champions
+- read trusted market data from `data`
+- mechanically refit the pinned strategy on fresh data
+- respect rebalance cadence
+- reconcile venue state
+- size positions from live account value and margin budget
+- trade in paper or live mode
 
-2. Pin the live champion explicitly:
+## Inputs
 
-```bash
-python -m execution.select_champion --policy best-accepted --out execution/champion.json
-```
+- trusted market cache
+- paper champion
+- live champion
+- exchange credentials
+- account address
+- runtime state
 
-3. Run one paper execution cycle:
+## Outputs
 
-```bash
-python -m execution.run_live --champion execution/champion.json
-```
+- paper or live orders
+- runtime logs
+- reconciliation snapshots
+- updated state
 
-4. Once paper logs look correct, switch `execution/champion.json` to `"mode": "live"` and set:
+## Important Sizing Rule
 
-- `live.account_address`
-- `live.secret_key_env`
+All wallet capital can belong to the strategy.
 
-Then rerun the same command.
+Execution still sizes from a margin budget, not from a blind gross multiple. It should read live account value from Hyperliquid and preserve headroom through margin controls.
 
-## Cron / launchd
+## Non-Goals
 
-For hourly cron use two steps, not one:
+- do not search for new models
+- do not promote champions
+- do not own data ingestion
 
-```cron
-2 * * * * cd /Users/marcosentebi/Q_Lab_HL && /users/marcosentebi/anaconda3/envs/vscode/bin/python -m execution.update_cache >> execution/update.log 2>&1
-5 * * * * cd /Users/marcosentebi/Q_Lab_HL && /users/marcosentebi/anaconda3/envs/vscode/bin/python -m execution.run_live --champion execution/champion.json >> execution/live.log 2>&1
-```
+Start with:
 
-`launchd` is preferred on macOS once the paper loop is stable.
-
-## Safety Defaults
-
-- default mode is `paper`
-- one champion only
-- refuse to trade stale data
-- refuse to trade the same signal bar twice unless `--force`
-- kill switch file: `execution/STOP`
+- [execution/inputs/champions.md](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/execution/inputs/champions.md)
+- [execution/process/runtime_loop.md](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/execution/process/runtime_loop.md)
+- [execution/outputs/runtime_state.md](/Users/marcosentebi/Q_Lab_HL_deploy-winner1-on-main/execution/outputs/runtime_state.md)
