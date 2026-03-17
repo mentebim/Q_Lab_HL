@@ -29,7 +29,7 @@
     ]
   },
   "execution_overrides": {
-    "rebalance_every_bars": 24
+    "rebalance_every_bars": 48
   },
   "data_dir": "data/active_1h/machine",
   "synthetic": false,
@@ -40,11 +40,11 @@
   "enable_walk_forward": false,
   "notes": "Copy this template for new bounded candidate searches.",
   "express_filter": {
-    "enabled": true,
+    "enabled": false,
     "period": "outer",
     "trailing_bars": 2880,
     "max_assets": 20,
-    "bootstrap_samples": 50,
+    "bootstrap_samples": 10,
     "primary_metric": "sharpe_annualized",
     "primary_min": -0.5,
     "max_beta_abs": 0.25,
