@@ -243,25 +243,21 @@ def walk_forward_evaluate(
     data_store: DataStore,
     execution: ExecutionConfig | None = None,
     *,
-    train_bars: int = 2000,
+    runway_bars: int = 504,
     eval_bars: int = 500,
     step_bars: int = 250,
     bootstrap_samples: int = 50,
 ) -> dict:
-    from dataclasses import replace as dc_replace
     execution = execution or ExecutionConfig()
     usable_index = strategy_warmup_timestamps(data_store, execution)
-    if len(usable_index) < train_bars + eval_bars:
+    if len(usable_index) < runway_bars + eval_bars:
         return {"windows": 0, "error": "insufficient_data"}
-    saved_spec = getattr(strategy_module, "SPEC", None)
-    saved_execution = getattr(strategy_module, "EXECUTION", None)
+    model_train_window = getattr(getattr(strategy_module, "SPEC", None), "train_window_bars", runway_bars)
     saved_state = dict(getattr(strategy_module, "_STATE", {}))
+    window_results: list[dict] = []
     try:
-        if saved_spec is not None:
-            strategy_module.SPEC = dc_replace(saved_spec, train_window_bars=train_bars)
-        window_results: list[dict] = []
-        for start in range(0, len(usable_index) - train_bars - eval_bars + 1, step_bars):
-            eval_start = start + train_bars
+        for start in range(0, len(usable_index) - runway_bars - eval_bars + 1, step_bars):
+            eval_start = start + runway_bars
             eval_end = eval_start + eval_bars
             eval_timestamps = usable_index[eval_start:eval_end]
             metrics = evaluate_timestamps(
@@ -277,10 +273,6 @@ def walk_forward_evaluate(
                 if not isinstance(v, (pd.Series, pd.DataFrame))
             })
     finally:
-        if saved_spec is not None:
-            strategy_module.SPEC = saved_spec
-        if saved_execution is not None:
-            strategy_module.EXECUTION = saved_execution
         strategy_module._STATE = saved_state
     if not window_results:
         return {"windows": 0, "error": "no_windows"}
@@ -292,7 +284,8 @@ def walk_forward_evaluate(
     positive_sharpe_windows = sum(1 for s in sharpes if s > 0)
     return {
         "windows": len(window_results),
-        "train_bars": train_bars,
+        "runway_bars": runway_bars,
+        "model_train_window_bars": model_train_window,
         "eval_bars": eval_bars,
         "step_bars": step_bars,
         "sharpe_mean": float(np.mean(sharpes)),

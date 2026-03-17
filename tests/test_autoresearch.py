@@ -39,7 +39,7 @@ class AutoResearchTests(unittest.TestCase):
             self.assertEqual(spec.strategy_path, "strategy.py")
             self.assertEqual(spec.strategy_family, "linear_cross_section_v1")
             self.assertEqual(spec.research_policy_path, "autoresearch/research_policy.json")
-            self.assertEqual(spec.evaluation_periods, ("inner", "outer", "test"))
+            self.assertEqual(spec.evaluation_periods, ("inner", "outer"))
             self.assertTrue(spec.express_filter.enabled)
             self.assertIsNone(spec.strategy_spec)
 
@@ -180,9 +180,10 @@ class PolicyConsistencyTests(unittest.TestCase):
         self.assertEqual(config.max_assets, 20)
         self.assertFalse(hasattr(config, "min_active_sharpe"))
 
-    def test_default_evaluation_periods_include_test(self):
+    def test_default_evaluation_periods(self):
         spec = ExperimentSpec()
-        self.assertEqual(spec.evaluation_periods, ("inner", "outer", "test"))
+        self.assertEqual(spec.evaluation_periods, ("inner", "outer"))
+        self.assertFalse(spec.enable_walk_forward)
 
 
 class WalkForwardInvariantTests(unittest.TestCase):
@@ -198,7 +199,7 @@ class WalkForwardInvariantTests(unittest.TestCase):
         spec_before = strategy.SPEC
         execution_before = strategy.EXECUTION
         store = DataStore.synthetic(n_assets=20, periods=24 * 30, seed=7)
-        walk_forward_evaluate(strategy, store, execution_before, train_bars=200, eval_bars=100, step_bars=100, bootstrap_samples=5)
+        walk_forward_evaluate(strategy, store, execution_before, runway_bars=200, eval_bars=100, step_bars=100, bootstrap_samples=5)
         self.assertEqual(strategy.SPEC.position_bucket, spec_before.position_bucket)
         self.assertEqual(strategy.SPEC.model.family, spec_before.model.family)
         self.assertEqual(strategy.SPEC.model.l2_reg, spec_before.model.l2_reg)
@@ -214,7 +215,7 @@ class WalkForwardInvariantTests(unittest.TestCase):
         )
         strategy._STATE["marker"] = "before_wf"
         store = DataStore.synthetic(n_assets=20, periods=24 * 30, seed=7)
-        walk_forward_evaluate(strategy, store, strategy.EXECUTION, train_bars=200, eval_bars=100, step_bars=100, bootstrap_samples=5)
+        walk_forward_evaluate(strategy, store, strategy.EXECUTION, runway_bars=200, eval_bars=100, step_bars=100, bootstrap_samples=5)
         self.assertEqual(strategy._STATE.get("marker"), "before_wf")
 
 

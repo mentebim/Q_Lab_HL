@@ -41,6 +41,10 @@ def load_experiment_spec(path: str | Path) -> ExperimentSpec:
         synthetic=bool(payload.get("synthetic", False)),
         evaluation_periods=tuple(payload.get("evaluation_periods", defaults.evaluation_periods)),
         notes=str(payload.get("notes") or ""),
+        enable_walk_forward=bool(payload.get("enable_walk_forward", defaults.enable_walk_forward)),
+        walk_forward_runway_bars=int(payload.get("walk_forward_runway_bars", defaults.walk_forward_runway_bars)),
+        walk_forward_eval_bars=int(payload.get("walk_forward_eval_bars", defaults.walk_forward_eval_bars)),
+        walk_forward_step_bars=int(payload.get("walk_forward_step_bars", defaults.walk_forward_step_bars)),
         express_filter=ExpressFilterConfig(**payload.get("express_filter", {})),
         acceptance=AcceptancePolicy(**payload.get("acceptance", {})),
         recording=RecordingConfig(**payload.get("recording", {})),
@@ -153,7 +157,15 @@ def run_experiment(
     judged = preferred_period(result["periods"])
     result["model_fit"] = result["period_model_fit"].get(judged, result["period_model_fit"].get(
         next(iter(result["period_model_fit"]), None)))
-    result["walk_forward"] = _jsonable(walk_forward_evaluate(strategy, data_store, execution))
+    if spec.enable_walk_forward:
+        result["walk_forward"] = _jsonable(walk_forward_evaluate(
+            strategy, data_store, execution,
+            runway_bars=spec.walk_forward_runway_bars,
+            eval_bars=spec.walk_forward_eval_bars,
+            step_bars=spec.walk_forward_step_bars,
+        ))
+    else:
+        result["walk_forward"] = None
     result["acceptance"] = evaluate_acceptance(result, spec.acceptance, leaderboard)
     result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
     if write_result:

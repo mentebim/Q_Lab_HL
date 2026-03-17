@@ -69,9 +69,9 @@
   "synthetic": false,
   "evaluation_periods": [
     "inner",
-    "outer",
-    "test"
+    "outer"
   ],
+  "enable_walk_forward": false,
   "notes": "First agent-operable baseline config. Copy this file for each new candidate instead of editing the example config.",
   "express_filter": {
     "enabled": true,

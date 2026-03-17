@@ -35,9 +35,9 @@
   "synthetic": false,
   "evaluation_periods": [
     "inner",
-    "outer",
-    "test"
+    "outer"
   ],
+  "enable_walk_forward": false,
   "notes": "Copy this template for new bounded candidate searches.",
   "express_filter": {
     "enabled": true,

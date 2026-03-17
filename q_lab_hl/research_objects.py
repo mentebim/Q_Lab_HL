@@ -103,8 +103,12 @@ class CandidateSpec:
     execution_overrides: dict[str, Any] | None = None
     data_dir: str = "data/active_1h/machine"
     synthetic: bool = False
-    evaluation_periods: tuple[str, ...] = ("inner", "outer", "test")
+    evaluation_periods: tuple[str, ...] = ("inner", "outer")
     notes: str = ""
+    enable_walk_forward: bool = False
+    walk_forward_runway_bars: int = 504
+    walk_forward_eval_bars: int = 500
+    walk_forward_step_bars: int = 250
     express_filter: ExpressFilterConfig = field(default_factory=ExpressFilterConfig)
     acceptance: AcceptancePolicy = field(default_factory=AcceptancePolicy)
     recording: RecordingConfig = field(default_factory=RecordingConfig)
