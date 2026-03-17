@@ -14,7 +14,7 @@ import pandas as pd
 from q_lab_hl.backtest import load_strategy, strategy_warmup_timestamps
 from q_lab_hl.config import ExecutionConfig
 from q_lab_hl.data import DataStore
-from q_lab_hl.evaluate import build_time_slices, evaluate, evaluate_timestamps
+from q_lab_hl.evaluate import build_time_slices, evaluate, evaluate_timestamps, walk_forward_evaluate
 from q_lab_hl.promotion_objects import build_promotion_eligibility
 from q_lab_hl.research_objects import (
     AcceptancePolicy,
@@ -144,11 +144,16 @@ def run_experiment(
         if append_leaderboard:
             append_leaderboard_entry(leaderboard_record(result), spec.recording.leaderboard_path)
         return result
+    result["period_model_fit"] = {}
     for period in spec.evaluation_periods:
         metrics = evaluate(strategy, data_store, period=period, execution=execution)
         result["periods"][period] = compact_metrics(metrics)
-    if hasattr(strategy, "last_fit_summary"):
-        result["model_fit"] = _jsonable(strategy.last_fit_summary())
+        if hasattr(strategy, "last_fit_summary"):
+            result["period_model_fit"][period] = _jsonable(strategy.last_fit_summary())
+    judged = preferred_period(result["periods"])
+    result["model_fit"] = result["period_model_fit"].get(judged, result["period_model_fit"].get(
+        next(iter(result["period_model_fit"]), None)))
+    result["walk_forward"] = _jsonable(walk_forward_evaluate(strategy, data_store, execution))
     result["acceptance"] = evaluate_acceptance(result, spec.acceptance, leaderboard)
     result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
     if write_result:
@@ -248,8 +253,6 @@ def run_express_filter(
     failed_checks: list[str] = []
     if primary_value is None or primary_value < config.primary_min:
         failed_checks.append("primary_metric")
-    if as_float(metrics.get("active_sharpe_annualized"), default=-float("inf")) < config.min_active_sharpe:
-        failed_checks.append("active_sharpe_annualized")
     if abs(as_float(metrics.get("beta_to_market"), default=float("inf"))) > config.max_beta_abs:
         failed_checks.append("beta_to_market")
     if as_float(metrics.get("turnover"), default=float("inf")) > config.max_turnover:
@@ -275,12 +278,31 @@ def evaluate_acceptance(result: dict[str, Any], policy: AcceptancePolicy, leader
     review_reasons: list[str] = []
     if primary_value is None or primary_value < policy.primary_min:
         failed_checks.append("primary_metric")
-    if as_float(period_metrics.get("active_sharpe_annualized"), default=-float("inf")) < policy.min_active_sharpe:
-        failed_checks.append(f"{judged_period}_active_sharpe")
     if abs(as_float(period_metrics.get("beta_to_market"), default=float("inf"))) > policy.max_beta_abs:
         failed_checks.append(f"{judged_period}_beta")
     if as_float(period_metrics.get("turnover"), default=float("inf")) > policy.max_turnover:
         failed_checks.append(f"{judged_period}_turnover")
+    inner_sharpe = as_float(result.get("periods", {}).get("inner", {}).get("sharpe_annualized"), default=0.0)
+    outer_sharpe = as_float(period_metrics.get("sharpe_annualized"), default=0.0)
+    test_sharpe = as_float(result.get("periods", {}).get("test", {}).get("sharpe_annualized"), default=0.0)
+    if inner_sharpe != 0 and outer_sharpe != 0:
+        if (inner_sharpe > 0) != (outer_sharpe > 0):
+            failed_checks.append("inner_outer_sign_consistency")
+    if outer_sharpe != 0 and test_sharpe != 0:
+        if (outer_sharpe > 0) != (test_sharpe > 0):
+            failed_checks.append("outer_test_sign_consistency")
+    judged_model_fit = (result.get("period_model_fit") or {}).get(judged_period) or result.get("model_fit") or {}
+    model_diagnostics = judged_model_fit.get("model_fit", {}).get("diagnostics", {})
+    rank_ic = as_float(model_diagnostics.get("cross_sectional_rank_ic_mean"))
+    rank_ic_positive = as_float(model_diagnostics.get("cross_sectional_rank_ic_positive_share"))
+    if rank_ic is not None and rank_ic < 0.03:
+        failed_checks.append("model_rank_ic_too_low")
+    if rank_ic_positive is not None and rank_ic_positive < 0.52:
+        failed_checks.append("model_rank_ic_positive_share_too_low")
+    wf = result.get("walk_forward") or {}
+    wf_positive_ratio = as_float(wf.get("positive_sharpe_ratio"))
+    if wf_positive_ratio is not None and wf_positive_ratio < 0.5:
+        failed_checks.append("walk_forward_majority_negative")
     reference = select_reference_record(leaderboard, policy, policy.primary_metric)
     reference_value = None
     if policy.compare_to_best or policy.compare_to_candidate_id:

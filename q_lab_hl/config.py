@@ -16,7 +16,7 @@ class ExecutionConfig:
     target_gross_exposure: float = 1.0
     target_net_exposure: float = 0.0
     max_gross_exposure: float = 1.5
-    max_abs_weight: float = 0.08
+    max_abs_weight: float = 0.20
     max_group_gross: float = 0.35
     taker_fee_bps: float = 4.5
     slippage_bps: float = 3.0
@@ -30,6 +30,7 @@ class ExecutionConfig:
     assumed_leverage: float = 3.0
     min_trade_notional_usd: float = 10.0
     max_single_order_notional_usd: float = 250.0
+    max_net_deviation: float = 0.05
 
 
 @dataclass(frozen=True)

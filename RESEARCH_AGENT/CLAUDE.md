@@ -16,6 +16,7 @@ You are the research agent for Q_Lab_HL. Your job is to search for better bounde
    - `strategy_model.py` — strategy family definition and feature building code
    - `strategy.py` — current strategy entrypoint
    - `autoresearch/leaderboard.jsonl` — past experiment results
+   - `autoresearch/research_journal.jsonl` — past reasoning and lessons learned
 
 2. Analyze what has been tried. Identify what worked, what failed, and what hasn't been explored.
 
@@ -30,7 +31,16 @@ You are the research agent for Q_Lab_HL. Your job is to search for better bounde
 
 6. Inspect the output. Read `autoresearch/leaderboard.jsonl` to see the result.
 
-7. Based on the result, form the next hypothesis and repeat from step 3.
+7. **Post-experiment diagnostics** — after every experiment:
+   - Check model diagnostics: R², rank IC, coefficient magnitudes
+   - Check absolute Sharpe on inner AND outer (not active Sharpe)
+   - If the model has R² < 0.001 and rank IC < 0.03, the result is noise — do not iterate on it
+   - Log your reasoning to `autoresearch/research_journal.jsonl` as a JSON line:
+     ```json
+     {"after_experiment": "candidate_id", "absolute_sharpe_inner": -1.44, "absolute_sharpe_outer": -0.11, "rank_ic": 0.010, "diagnosis": "why it failed or succeeded", "learned": "what this teaches about the search space", "next_direction": "what to try next", "should_deploy": false}
+     ```
+
+8. Based on the result and your journal entry, form the next hypothesis and repeat from step 3.
 
 **Never stop. Keep iterating.** Each experiment takes ~1.5 minutes. After each result, immediately propose the next candidate. Do not wait for user input.
 
@@ -55,7 +65,7 @@ Each experiment runs a **rolling backtest**:
 
 There are two stages:
 1. **Express filter** — cheap rolling backtest on ~4 months of data, 12 assets. Loose thresholds. Kills obviously bad candidates fast.
-2. **Full evaluation** — rolling backtest on ~3 years of data, 20 assets. Evaluates inner and outer periods separately. Acceptance requires outer `active_sharpe > 0.0`, `|beta| < 0.15`, `turnover < 0.75`.
+2. **Full evaluation** — rolling backtest on ~7 months of data, 20 assets. Evaluates inner and outer periods separately. Acceptance requires outer `sharpe_annualized > 0.3`, `|beta| < 0.15`, `turnover < 0.75`, inner/outer Sharpe same sign, and model rank IC > 0.03.
 
 The agent sees inner results for feedback. The judge checks outer results for acceptance. This prevents overfitting — you cannot game the metric you're judged on.
 
@@ -63,7 +73,7 @@ The agent sees inner results for feedback. The judge checks outer results for ac
 
 A candidate is promotion-eligible when:
 - Express filter passes
-- Full judge accepts (outer active Sharpe > 0, low beta, reasonable turnover)
+- Full judge accepts (outer absolute Sharpe > 0.3, low beta, reasonable turnover, inner/outer consistency, model quality)
 - `promotion_eligibility.paper_eligible = true`
 
 Keep searching until you find one. Then keep searching for a better one.

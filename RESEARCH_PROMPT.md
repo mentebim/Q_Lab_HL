@@ -13,15 +13,16 @@ The goal is not unrestricted creativity. The goal is correct search:
 
 ## What The Agent Is Optimizing
 
-The agent should search for candidates that improve out-of-sample active risk-adjusted returns after costs, funding, and implementability realism.
+The agent should search for candidates that achieve positive absolute risk-adjusted returns after costs, funding, and implementability realism.
 
 The preferred judgment order is:
 
-1. outer/test quality
-2. stability across periods
-3. lower beta drift
-4. lower turnover when alpha quality is similar
-5. simpler hypotheses when performance is similar
+1. positive absolute Sharpe on both inner and outer periods
+2. consistency: inner and outer absolute Sharpe should have the same sign
+3. model quality: cross-sectional rank IC > 0.03, R² > 0 (however small)
+4. lower beta drift
+5. lower turnover when performance is similar
+6. simpler hypotheses when performance is similar
 
 ## Research Contract
 
@@ -113,7 +114,7 @@ Both files are in the editable surface. Keep the computation simple — it shoul
 - The existing baseline uses zscore transforms on most features. Try rank transforms — they are more robust to outliers in crypto.
 - Longer lookbacks (48h, 72h, 168h) capture different regimes than the default 1h/6h/24h.
 - Funding is the most crypto-native signal. Explore it at multiple timescales.
-- With ~12 tradable assets after filters, keep `position_bucket` at 2–3 to avoid using the entire universe.
+- `position_bucket` controls how many assets you go long/short. With 20 tradable assets, pb=3 means 3L/3S (concentrated), pb=5 means 5L/5S (diversified). This directly affects gross exposure and portfolio diversification. Choose it deliberately.
 - The judge penalizes instability (rolling Sharpe IQR). Simpler, more stable features tend to score better than complex ones.
 
 ## Integrity Rules
@@ -125,5 +126,8 @@ Both files are in the editable surface. Keep the computation simple — it shoul
 - No promotion based on in-sample wins alone
 - Do not promote directly to champion without a valid result artifact
 - Prefer mutating candidate JSON over rewriting Python
+- Do not treat active (benchmark-relative) Sharpe as a success metric for market-neutral strategies
+- Check model diagnostics (R², rank IC) after every run — if the model has no predictive power, the result is noise regardless of Sharpe
+- Compare inner and outer absolute Sharpe — if they have opposite signs, the result is a regime artifact
 
 If a candidate only looks good after changing the evaluator, treat it as invalid.

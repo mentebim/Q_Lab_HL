@@ -32,10 +32,10 @@ class StrategyFamilyDefinition:
 LINEAR_CROSS_SECTION_FAMILY = StrategyFamilyDefinition(
     family_id="linear_cross_section_v1",
     description="Approved cross-sectional linear family for bounded Hyperliquid candidate search.",
-    allowed_feature_kinds=("return", "volatility", "ma_gap", "funding_mean"),
+    allowed_feature_kinds=("return", "volatility", "ma_gap", "funding_mean", "high_low_range", "oi_change", "funding_momentum"),
     allowed_transforms=("zscore", "rank", "none"),
     allowed_target_kinds=("next_open_to_close_return", "next_close_to_close_return"),
-    allowed_model_families=("ols", "ridge"),
+    allowed_model_families=("ols", "ridge", "lasso", "elastic_net"),
     min_features=1,
     max_features=12,
     min_position_bucket=2,
@@ -66,6 +66,7 @@ class TargetSpec:
 class ModelSpec:
     family: str
     l2_reg: float = 0.0
+    l1_reg: float = 0.0
     prediction_clip: float = 3.0
 
 
@@ -118,6 +119,7 @@ def model_spec_from_dict(payload: dict[str, Any]) -> ModelSpec:
     return ModelSpec(
         family=str(payload["family"]),
         l2_reg=float(payload.get("l2_reg", 0.0)),
+        l1_reg=float(payload.get("l1_reg", 0.0)),
         prediction_clip=float(payload.get("prediction_clip", 3.0)),
     )
 
@@ -173,6 +175,7 @@ class LinearModel:
     coefficients: tuple[float, ...]
     family: str
     l2_reg: float
+    l1_reg: float
     n_train_rows: int
     train_start: str
     train_end: str
@@ -182,6 +185,7 @@ class LinearModel:
         return {
             "family": self.family,
             "l2_reg": self.l2_reg,
+            "l1_reg": self.l1_reg,
             "n_train_rows": self.n_train_rows,
             "train_start": self.train_start,
             "train_end": self.train_end,
@@ -281,6 +285,7 @@ def fit_linear_model(
     feature_names: tuple[str, ...],
     family: str,
     l2_reg: float,
+    l1_reg: float = 0.0,
     train_start: str,
     train_end: str,
     train_timestamps: pd.DatetimeIndex | None = None,
@@ -298,6 +303,8 @@ def fit_linear_model(
         beta = np.linalg.solve(design.T @ design + float(l2_reg) * penalty, design.T @ y)
     elif family == "ols":
         beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+    elif family in ("lasso", "elastic_net"):
+        beta = _coordinate_descent(design, y, l1_reg=float(l1_reg), l2_reg=float(l2_reg))
     else:
         raise ValueError(f"Unsupported model family '{family}'")
     diagnostics = _fit_diagnostics(
@@ -314,6 +321,7 @@ def fit_linear_model(
         coefficients=tuple(float(value) for value in beta[1:]),
         family=family,
         l2_reg=float(l2_reg),
+        l1_reg=float(l1_reg),
         n_train_rows=int(X.shape[0]),
         train_start=train_start,
         train_end=train_end,
@@ -356,6 +364,7 @@ def latest_snapshot(
         feature_names=dataset["feature_names"],
         family=strategy_spec.model.family,
         l2_reg=strategy_spec.model.l2_reg,
+        l1_reg=strategy_spec.model.l1_reg,
         train_start=dataset["train_start"],
         train_end=dataset["train_end"],
         train_timestamps=dataset.get("train_timestamps"),
@@ -396,10 +405,48 @@ def construct_portfolio(scores: pd.Series, position_bucket: int) -> pd.Series:
     return weights.groupby(level=0).sum()
 
 
+def _coordinate_descent(
+    design: np.ndarray,
+    y: np.ndarray,
+    *,
+    l1_reg: float,
+    l2_reg: float,
+    max_iter: int = 200,
+    tol: float = 1e-6,
+) -> np.ndarray:
+    n_obs, n_params = design.shape
+    beta = np.zeros(n_params, dtype=float)
+    for _ in range(max_iter):
+        beta_old = beta.copy()
+        for j in range(n_params):
+            residual = y - design @ beta + design[:, j] * beta[j]
+            rho = float(design[:, j] @ residual) / n_obs
+            if j == 0:
+                beta[j] = rho
+            else:
+                denom = float(design[:, j] @ design[:, j]) / n_obs + l2_reg
+                beta[j] = _soft_threshold(rho, l1_reg) / denom
+        if np.max(np.abs(beta - beta_old)) < tol:
+            break
+    return beta
+
+
+def _soft_threshold(rho: float, l1: float) -> float:
+    if rho > l1:
+        return rho - l1
+    if rho < -l1:
+        return rho + l1
+    return 0.0
+
+
 def _build_feature_frames(
     close: pd.DataFrame,
     funding: pd.DataFrame,
     feature_specs: tuple[FeatureSpec, ...],
+    *,
+    high: pd.DataFrame | None = None,
+    low: pd.DataFrame | None = None,
+    open_interest: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:
     frames: dict[str, pd.DataFrame] = {}
     returns_1h = close.pct_change(fill_method=None)
@@ -416,6 +463,22 @@ def _build_feature_frames(
                 frames[spec.name] = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
             else:
                 frames[spec.name] = funding.rolling(spec.lookback).mean().reindex_like(close)
+        elif spec.kind == "high_low_range":
+            if high is not None and low is not None:
+                bar_range = (high - low) / close
+                frames[spec.name] = bar_range.rolling(spec.lookback).mean()
+            else:
+                frames[spec.name] = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+        elif spec.kind == "oi_change":
+            if open_interest is not None and open_interest.notna().any().any():
+                frames[spec.name] = open_interest / open_interest.shift(spec.lookback) - 1.0
+            else:
+                frames[spec.name] = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+        elif spec.kind == "funding_momentum":
+            if funding.empty:
+                frames[spec.name] = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+            else:
+                frames[spec.name] = funding.diff(spec.lookback).reindex_like(close)
         else:
             raise ValueError(f"Unsupported feature kind '{spec.kind}'")
     return frames
@@ -485,8 +548,11 @@ def _get_cached_frames(base_store, feature_specs: tuple[FeatureSpec, ...], targe
         return cached
     close = base_store.prices(field="close")
     open_ = base_store.prices(field="open")
+    high = base_store.prices(field="high")
+    low = base_store.prices(field="low")
     funding = base_store.funding()
-    feature_frames = _build_feature_frames(close, funding, feature_specs)
+    oi = base_store.open_interest() if hasattr(base_store, "open_interest") else None
+    feature_frames = _build_feature_frames(close, funding, feature_specs, high=high, low=low, open_interest=oi)
     target_frame = _build_target_frame(close, open_, target_spec)
     cached = {
         "close": close,

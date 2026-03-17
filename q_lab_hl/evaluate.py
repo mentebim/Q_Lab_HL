@@ -93,7 +93,7 @@ def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, 
     turnover_penalty = max(0.0, turnover - 0.35) * 1.25
     beta_penalty = max(0.0, abs(beta) - 0.10) * 3.0
     concentration_penalty = max(0.0, max_abs - 0.12) * 2.0
-    instability_penalty = max(0.0, instability - 1.25) * 0.35
+    instability_penalty = max(0.0, instability - 6.0) * 0.15
     capacity_penalty = 0.0
     implementation_shortfall_penalty = skipped_notional_ratio * 4.0
     score = (
@@ -236,6 +236,79 @@ def _share(part: float, total: float) -> float:
     if total == 0:
         return 0.0
     return float(part / total)
+
+
+def walk_forward_evaluate(
+    strategy_module,
+    data_store: DataStore,
+    execution: ExecutionConfig | None = None,
+    *,
+    train_bars: int = 2000,
+    eval_bars: int = 500,
+    step_bars: int = 250,
+    bootstrap_samples: int = 50,
+) -> dict:
+    from dataclasses import replace as dc_replace
+    execution = execution or ExecutionConfig()
+    usable_index = strategy_warmup_timestamps(data_store, execution)
+    if len(usable_index) < train_bars + eval_bars:
+        return {"windows": 0, "error": "insufficient_data"}
+    saved_spec = getattr(strategy_module, "SPEC", None)
+    saved_execution = getattr(strategy_module, "EXECUTION", None)
+    saved_state = dict(getattr(strategy_module, "_STATE", {}))
+    try:
+        if saved_spec is not None:
+            strategy_module.SPEC = dc_replace(saved_spec, train_window_bars=train_bars)
+        window_results: list[dict] = []
+        for start in range(0, len(usable_index) - train_bars - eval_bars + 1, step_bars):
+            eval_start = start + train_bars
+            eval_end = eval_start + eval_bars
+            eval_timestamps = usable_index[eval_start:eval_end]
+            metrics = evaluate_timestamps(
+                strategy_module,
+                data_store,
+                timestamps=eval_timestamps,
+                execution=execution,
+                period_label=f"wf_{start}",
+                bootstrap_samples=bootstrap_samples,
+            )
+            window_results.append({
+                k: v for k, v in metrics.items()
+                if not isinstance(v, (pd.Series, pd.DataFrame))
+            })
+    finally:
+        if saved_spec is not None:
+            strategy_module.SPEC = saved_spec
+        if saved_execution is not None:
+            strategy_module.EXECUTION = saved_execution
+        strategy_module._STATE = saved_state
+    if not window_results:
+        return {"windows": 0, "error": "no_windows"}
+    sharpes = [float(w.get("sharpe_annualized", 0.0)) for w in window_results]
+    active_sharpes = [float(w.get("active_sharpe_annualized", 0.0)) for w in window_results]
+    turnovers = [float(w.get("turnover", 0.0)) for w in window_results]
+    betas = [float(w.get("beta_to_market", 0.0)) for w in window_results]
+    drawdowns = [float(w.get("max_drawdown", 0.0)) for w in window_results]
+    positive_sharpe_windows = sum(1 for s in sharpes if s > 0)
+    return {
+        "windows": len(window_results),
+        "train_bars": train_bars,
+        "eval_bars": eval_bars,
+        "step_bars": step_bars,
+        "sharpe_mean": float(np.mean(sharpes)),
+        "sharpe_median": float(np.median(sharpes)),
+        "sharpe_std": float(np.std(sharpes, ddof=1)) if len(sharpes) > 1 else 0.0,
+        "sharpe_min": float(np.min(sharpes)),
+        "sharpe_max": float(np.max(sharpes)),
+        "positive_sharpe_windows": positive_sharpe_windows,
+        "positive_sharpe_ratio": float(positive_sharpe_windows / len(sharpes)),
+        "active_sharpe_mean": float(np.mean(active_sharpes)),
+        "turnover_mean": float(np.mean(turnovers)),
+        "beta_mean": float(np.mean(betas)),
+        "beta_abs_max": float(np.max(np.abs(betas))),
+        "max_drawdown_worst": float(np.min(drawdowns)),
+        "window_details": window_results,
+    }
 
 
 def bootstrap_sharpe_ci(returns: pd.Series, bars_per_year: int, n_boot: int = 200, seed: int = 7) -> tuple[float, float]:

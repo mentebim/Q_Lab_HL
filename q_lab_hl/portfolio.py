@@ -64,7 +64,7 @@ def normalize_long_short_weights(
     return normalized.sort_index()
 
 
-def validate_exposures(weights: pd.Series, max_gross: float, target_net: float, net_tolerance: float = 2e-2) -> None:
+def validate_exposures(weights: pd.Series, max_gross: float, target_net: float, net_tolerance: float = 0.05) -> None:
     gross = gross_exposure(weights)
     net = net_exposure(weights)
     if gross > max_gross + 1e-9:

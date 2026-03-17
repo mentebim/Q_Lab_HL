@@ -68,6 +68,7 @@ def signals(data, ts):
         feature_names=dataset["feature_names"],
         family=SPEC.model.family,
         l2_reg=SPEC.model.l2_reg,
+        l1_reg=SPEC.model.l1_reg,
         train_start=dataset["train_start"],
         train_end=dataset["train_end"],
         train_timestamps=dataset.get("train_timestamps"),

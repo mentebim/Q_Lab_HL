@@ -88,7 +88,7 @@ def run_backtest(
                 execution,
             )
             if not new_weights.empty:
-                validate_exposures(new_weights, execution.max_gross_exposure, execution.target_net_exposure)
+                validate_exposures(new_weights, execution.max_gross_exposure, execution.target_net_exposure, net_tolerance=execution.max_net_deviation)
             turnover = _turnover(current_weights, new_weights)
             implementation = _implementation_diagnostics(current_weights, new_weights, execution)
             cost_ret = turnover * (execution.taker_fee_bps + execution.slippage_bps) / 10_000.0

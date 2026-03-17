@@ -33,7 +33,7 @@ class DataStore:
         self.low = _clean_matrix(panels.low).reindex_like(self.close).ffill()
         self.volume = _clean_matrix(panels.volume).reindex_like(self.close).fillna(0.0)
         self.funding_panel = _optional_matrix(panels.funding, self.close, fill_value=None)
-        self.oi_panel = _optional_matrix(panels.open_interest, self.close)
+        self.oi_panel = _optional_matrix(panels.open_interest, self.close, fill_value=None)
         self.tradable_panel = _tradable_matrix(panels.tradable, self.close)
         self.trades_panel = _optional_matrix(panels.trades, self.close).fillna(0.0)
         self.metadata = panels.metadata or {asset: {} for asset in self.close.columns}

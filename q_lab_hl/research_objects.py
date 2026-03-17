@@ -61,9 +61,8 @@ class StrategyFamily:
 
 @dataclass(frozen=True)
 class AcceptancePolicy:
-    primary_metric: str = "periods.outer.active_sharpe_annualized"
-    primary_min: float = 0.0
-    min_active_sharpe: float = 0.0
+    primary_metric: str = "periods.outer.sharpe_annualized"
+    primary_min: float = 0.3
     max_beta_abs: float = 0.15
     max_turnover: float = 0.75
     compare_to_best: bool = False
@@ -83,12 +82,11 @@ class RecordingConfig:
 class ExpressFilterConfig:
     enabled: bool = True
     period: str = "outer"
-    trailing_bars: int = 24 * 60
-    max_assets: int = 12
+    trailing_bars: int = 24 * 120
+    max_assets: int = 20
     bootstrap_samples: int = 50
-    primary_metric: str = "score_inner"
-    primary_min: float = -1.0
-    min_active_sharpe: float = -0.25
+    primary_metric: str = "sharpe_annualized"
+    primary_min: float = -0.5
     max_beta_abs: float = 0.25
     max_turnover: float = 1.0
 
@@ -105,7 +103,7 @@ class CandidateSpec:
     execution_overrides: dict[str, Any] | None = None
     data_dir: str = "data/active_1h/machine"
     synthetic: bool = False
-    evaluation_periods: tuple[str, ...] = ("inner", "outer")
+    evaluation_periods: tuple[str, ...] = ("inner", "outer", "test")
     notes: str = ""
     express_filter: ExpressFilterConfig = field(default_factory=ExpressFilterConfig)
     acceptance: AcceptancePolicy = field(default_factory=AcceptancePolicy)
