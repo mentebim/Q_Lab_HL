@@ -20,6 +20,7 @@ class MarketPanels:
     funding: pd.DataFrame | None = None
     open_interest: pd.DataFrame | None = None
     tradable: pd.DataFrame | None = None
+    research_eligible: pd.DataFrame | None = None
     metadata: dict | None = None
     trades: pd.DataFrame | None = None
 
@@ -35,6 +36,7 @@ class DataStore:
         self.funding_panel = _optional_matrix(panels.funding, self.close, fill_value=None)
         self.oi_panel = _optional_matrix(panels.open_interest, self.close, fill_value=None)
         self.tradable_panel = _tradable_matrix(panels.tradable, self.close)
+        self.research_eligible_panel = _eligibility_matrix(panels.research_eligible, self.close)
         self.trades_panel = _optional_matrix(panels.trades, self.close).fillna(0.0)
         self.metadata = panels.metadata or {asset: {} for asset in self.close.columns}
         self.index = self.close.index
@@ -57,6 +59,11 @@ class DataStore:
             funding=pd.read_parquet(path / "funding.parquet") if (path / "funding.parquet").exists() else None,
             open_interest=pd.read_parquet(path / "open_interest.parquet") if (path / "open_interest.parquet").exists() else None,
             tradable=pd.read_parquet(path / "tradable.parquet") if (path / "tradable.parquet").exists() else None,
+            research_eligible=(
+                pd.read_parquet(path / "is_research_eligible.parquet")
+                if (path / "is_research_eligible.parquet").exists()
+                else None
+            ),
             metadata=metadata.get("assets", metadata),
             trades=pd.read_parquet(path / "trades.parquet") if (path / "trades.parquet").exists() else None,
         )
@@ -135,6 +142,8 @@ class DataStore:
         for asset in self.assets:
             if not self.can_trade(asset, ts):
                 continue
+            if asset in self.research_eligible_panel.columns and not bool(self.research_eligible_panel.at[ts, asset]):
+                continue
             if pos + 1 < min_history_bars:
                 continue
             hist = self.close[asset].iloc[: pos + 1].dropna()
@@ -185,6 +194,7 @@ class DataStore:
             funding=self.funding_panel.loc[index, asset_list],
             open_interest=self.oi_panel.loc[index, asset_list],
             tradable=self.tradable_panel.loc[index, asset_list],
+            research_eligible=self.research_eligible_panel.loc[index, asset_list],
             metadata=metadata,
             trades=self.trades_panel.loc[index, asset_list],
         )
@@ -300,6 +310,13 @@ def _optional_matrix(frame: pd.DataFrame | None, template: pd.DataFrame, fill_va
 
 
 def _tradable_matrix(frame: pd.DataFrame | None, template: pd.DataFrame) -> pd.DataFrame:
+    if frame is None:
+        return pd.DataFrame(True, index=template.index, columns=template.columns)
+    matrix = pd.DataFrame(frame).reindex(index=template.index, columns=template.columns).fillna(False)
+    return matrix.astype(bool)
+
+
+def _eligibility_matrix(frame: pd.DataFrame | None, template: pd.DataFrame) -> pd.DataFrame:
     if frame is None:
         return pd.DataFrame(True, index=template.index, columns=template.columns)
     matrix = pd.DataFrame(frame).reindex(index=template.index, columns=template.columns).fillna(False)

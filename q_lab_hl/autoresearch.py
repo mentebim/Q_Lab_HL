@@ -103,6 +103,20 @@ def run_experiment(
     execution = getattr(strategy, "EXECUTION", ExecutionConfig())
     data_store = data_store or _load_data_store(spec)
     leaderboard = load_leaderboard(spec.recording.leaderboard_path)
+    strategy_spec = getattr(strategy, "SPEC", None)
+    target_horizon = getattr(getattr(strategy_spec, "target", None), "horizon", None)
+    rebalance_bars = execution.rebalance_every_bars
+    train_window = getattr(strategy_spec, "train_window_bars", None)
+    timeframes = {
+        "prediction_horizon_bars": target_horizon,
+        "rebalance_every_bars": rebalance_bars,
+        "train_window_bars": train_window,
+    }
+    if target_horizon is not None and rebalance_bars != target_horizon:
+        timeframes["warning"] = (
+            f"prediction horizon ({target_horizon}) != rebalance frequency ({rebalance_bars}); "
+            "model predicts a different timeframe than the holding period"
+        )
     result: dict[str, Any] = {
         "timestamp": now_utc_iso(),
         "experiment_id": spec.experiment_id,
@@ -121,11 +135,14 @@ def run_experiment(
             "assets": len(data_store.assets),
         },
         "execution": _jsonable(asdict(execution)),
+        "timeframes": timeframes,
         "spec": experiment_spec_to_dict(spec),
         "express_filter": None,
         "promotion_eligibility": None,
         "periods": {},
     }
+
+    # --- Stage 1: Express filter ---
     express_filter = run_express_filter(strategy, data_store, execution, spec.express_filter)
     result["express_filter"] = express_filter
     if not express_filter["passed"]:
@@ -141,22 +158,47 @@ def run_experiment(
             "reference_candidate_id": None,
             "reference_primary_value": None,
         }
-        result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
-        if write_result:
-            output_path = write_experiment_result(result, spec.recording.results_dir)
-            result["result_path"] = str(output_path)
-        if append_leaderboard:
-            append_leaderboard_entry(leaderboard_record(result), spec.recording.leaderboard_path)
-        return result
+        return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
+
     result["period_model_fit"] = {}
+
+    # --- Stage 2: Inner eval + inner rank IC gate ---
+    if "inner" in spec.evaluation_periods:
+        _eval_period(strategy, data_store, execution, "inner", result)
+        early = _check_inner_gates(result)
+        if early:
+            result["walk_forward"] = None
+            result["acceptance"] = _build_cascade_rejection("inner", early, spec.acceptance, result)
+            return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
+
+    # --- Stage 3: Outer eval + cross-period gates ---
+    if "outer" in spec.evaluation_periods:
+        _eval_period(strategy, data_store, execution, "outer", result)
+        early = _check_outer_gates(result, spec.acceptance)
+        if early:
+            result["walk_forward"] = None
+            result["acceptance"] = _build_cascade_rejection("outer", early, spec.acceptance, result)
+            return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
+
+    # --- Stage 4: Test eval + sign consistency gate ---
+    if "test" in spec.evaluation_periods:
+        _eval_period(strategy, data_store, execution, "test", result)
+        early = _check_test_gates(result, spec.acceptance)
+        if early:
+            result["walk_forward"] = None
+            result["acceptance"] = _build_cascade_rejection("test", early, spec.acceptance, result)
+            return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
+
+    # Evaluate any remaining periods not covered by the cascade
     for period in spec.evaluation_periods:
-        metrics = evaluate(strategy, data_store, period=period, execution=execution)
-        result["periods"][period] = compact_metrics(metrics)
-        if hasattr(strategy, "last_fit_summary"):
-            result["period_model_fit"][period] = _jsonable(strategy.last_fit_summary())
+        if period not in result["periods"]:
+            _eval_period(strategy, data_store, execution, period, result)
+
     judged = preferred_period(result["periods"])
     result["model_fit"] = result["period_model_fit"].get(judged, result["period_model_fit"].get(
         next(iter(result["period_model_fit"]), None)))
+
+    # --- Stage 5: Walk-forward (only survivors reach here) ---
     if spec.enable_walk_forward:
         result["walk_forward"] = _jsonable(walk_forward_evaluate(
             strategy, data_store, execution,
@@ -166,7 +208,110 @@ def run_experiment(
         ))
     else:
         result["walk_forward"] = None
+
+    # --- Final acceptance (WF gates, reference comparison) ---
     result["acceptance"] = evaluate_acceptance(result, spec.acceptance, leaderboard)
+    return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
+
+
+def _eval_period(strategy, data_store, execution, period, result):
+    metrics = evaluate(strategy, data_store, period=period, execution=execution)
+    result["periods"][period] = compact_metrics(metrics)
+    if hasattr(strategy, "last_fit_summary"):
+        result["period_model_fit"][period] = _jsonable(strategy.last_fit_summary())
+
+
+def _check_inner_gates(result: dict[str, Any]) -> list[str]:
+    failed: list[str] = []
+    inner_model_fit = (result.get("period_model_fit") or {}).get("inner", {})
+    inner_diagnostics = inner_model_fit.get("model_fit", {}).get("diagnostics", {})
+    inner_rank_ic = as_float(inner_diagnostics.get("cross_sectional_rank_ic_mean"))
+    if inner_rank_ic is not None and inner_rank_ic < 0.02:
+        failed.append("inner_rank_ic_too_low")
+    return failed
+
+
+def _check_outer_gates(result: dict[str, Any], policy: AcceptancePolicy) -> list[str]:
+    failed: list[str] = []
+    outer_metrics = result.get("periods", {}).get("outer", {})
+    inner_metrics = result.get("periods", {}).get("inner", {})
+    inner_sharpe = as_float(inner_metrics.get("sharpe_annualized"), default=0.0)
+    outer_sharpe = as_float(outer_metrics.get("sharpe_annualized"), default=0.0)
+    # Primary metric — only check if the referenced period has been evaluated
+    primary_value = as_float(resolve_metric_path(result, policy.primary_metric))
+    if primary_value is not None and primary_value < policy.primary_min:
+        failed.append("primary_metric")
+    # Beta
+    if abs(as_float(outer_metrics.get("beta_to_market"), default=float("inf"))) > policy.max_beta_abs:
+        failed.append("outer_beta")
+    # Turnover
+    if as_float(outer_metrics.get("turnover"), default=float("inf")) > policy.max_turnover:
+        failed.append("outer_turnover")
+    # Outer/inner sign consistency
+    if inner_sharpe != 0 and outer_sharpe != 0:
+        if (inner_sharpe > 0) != (outer_sharpe > 0):
+            failed.append("inner_outer_sign_consistency")
+        if inner_sharpe > 0 and outer_sharpe / inner_sharpe > 3.0:
+            failed.append("outer_inner_sharpe_ratio_suspicious")
+    # Bootstrap CI
+    judged_ci = outer_metrics.get("sharpe_ci")
+    if judged_ci is not None:
+        ci_low = as_float(judged_ci[0] if isinstance(judged_ci, (list, tuple)) else judged_ci, default=None)
+        if ci_low is not None and ci_low <= 0.0:
+            failed.append("sharpe_ci_includes_zero")
+    # Judged-period model quality
+    judged_model_fit = (result.get("period_model_fit") or {}).get("outer", {})
+    model_diagnostics = judged_model_fit.get("model_fit", {}).get("diagnostics", {})
+    rank_ic = as_float(model_diagnostics.get("cross_sectional_rank_ic_mean"))
+    rank_ic_positive = as_float(model_diagnostics.get("cross_sectional_rank_ic_positive_share"))
+    if rank_ic is not None and rank_ic < 0.03:
+        failed.append("model_rank_ic_too_low")
+    if rank_ic_positive is not None and rank_ic_positive < 0.52:
+        failed.append("model_rank_ic_positive_share_too_low")
+    return failed
+
+
+def _check_test_gates(result: dict[str, Any], policy: AcceptancePolicy) -> list[str]:
+    failed: list[str] = []
+    outer_sharpe = as_float(result.get("periods", {}).get("outer", {}).get("sharpe_annualized"), default=0.0)
+    test_sharpe = as_float(result.get("periods", {}).get("test", {}).get("sharpe_annualized"), default=0.0)
+    if outer_sharpe != 0 and test_sharpe != 0:
+        if (outer_sharpe > 0) != (test_sharpe > 0):
+            failed.append("outer_test_sign_consistency")
+    # Primary metric — all periods now evaluated, None means truly missing
+    primary_value = as_float(resolve_metric_path(result, policy.primary_metric))
+    if primary_value is None or primary_value < policy.primary_min:
+        failed.append("primary_metric")
+    return failed
+
+
+def _build_cascade_rejection(
+    stage_period: str,
+    failed_checks: list[str],
+    policy: AcceptancePolicy,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    judged = preferred_period(result.get("periods", {}))
+    result["model_fit"] = (result.get("period_model_fit") or {}).get(
+        judged, (result.get("period_model_fit") or {}).get(
+            next(iter(result.get("period_model_fit") or {}), None)))
+    primary_value = as_float(resolve_metric_path(result, policy.primary_metric))
+    return {
+        "status": "rejected",
+        "accepted": False,
+        "judged_period": judged,
+        "primary_metric": policy.primary_metric,
+        "primary_metric_value": primary_value,
+        "failed_checks": failed_checks,
+        "review_reasons": [],
+        "cascade_stage": stage_period,
+        "reference_experiment_id": None,
+        "reference_candidate_id": None,
+        "reference_primary_value": None,
+    }
+
+
+def _finalize_result(result, spec, leaderboard, write_result, append_leaderboard):
     result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
     if write_result:
         output_path = write_experiment_result(result, spec.recording.results_dir)
@@ -283,38 +428,34 @@ def run_express_filter(
 
 
 def evaluate_acceptance(result: dict[str, Any], policy: AcceptancePolicy, leaderboard: list[dict[str, Any]]) -> dict[str, Any]:
+    """Final acceptance check for candidates that survived the cascade.
+
+    Cascade stages already verified: inner rank IC, outer/inner Sharpe ratio,
+    sign consistency, bootstrap CI, primary metric, beta, turnover, and
+    model quality.  This function checks walk-forward gates, gross exposure,
+    and reference comparison.
+    """
     judged_period = preferred_period(result.get("periods", {}))
     period_metrics = result.get("periods", {}).get(judged_period, {})
     primary_value = as_float(resolve_metric_path(result, policy.primary_metric))
     failed_checks: list[str] = []
     review_reasons: list[str] = []
-    if primary_value is None or primary_value < policy.primary_min:
-        failed_checks.append("primary_metric")
-    if abs(as_float(period_metrics.get("beta_to_market"), default=float("inf"))) > policy.max_beta_abs:
-        failed_checks.append(f"{judged_period}_beta")
-    if as_float(period_metrics.get("turnover"), default=float("inf")) > policy.max_turnover:
-        failed_checks.append(f"{judged_period}_turnover")
-    inner_sharpe = as_float(result.get("periods", {}).get("inner", {}).get("sharpe_annualized"), default=0.0)
-    outer_sharpe = as_float(period_metrics.get("sharpe_annualized"), default=0.0)
-    test_sharpe = as_float(result.get("periods", {}).get("test", {}).get("sharpe_annualized"), default=0.0)
-    if inner_sharpe != 0 and outer_sharpe != 0:
-        if (inner_sharpe > 0) != (outer_sharpe > 0):
-            failed_checks.append("inner_outer_sign_consistency")
-    if outer_sharpe != 0 and test_sharpe != 0:
-        if (outer_sharpe > 0) != (test_sharpe > 0):
-            failed_checks.append("outer_test_sign_consistency")
-    judged_model_fit = (result.get("period_model_fit") or {}).get(judged_period) or result.get("model_fit") or {}
-    model_diagnostics = judged_model_fit.get("model_fit", {}).get("diagnostics", {})
-    rank_ic = as_float(model_diagnostics.get("cross_sectional_rank_ic_mean"))
-    rank_ic_positive = as_float(model_diagnostics.get("cross_sectional_rank_ic_positive_share"))
-    if rank_ic is not None and rank_ic < 0.03:
-        failed_checks.append("model_rank_ic_too_low")
-    if rank_ic_positive is not None and rank_ic_positive < 0.52:
-        failed_checks.append("model_rank_ic_positive_share_too_low")
+    # Gross exposure review flag
+    avg_gross = as_float(period_metrics.get("avg_gross_exposure"), default=1.0)
+    if avg_gross < 0.7:
+        review_reasons.append("low_gross_exposure")
+    # Walk-forward gates
     wf = result.get("walk_forward") or {}
     wf_positive_ratio = as_float(wf.get("positive_sharpe_ratio"))
-    if wf_positive_ratio is not None and wf_positive_ratio < 0.5:
+    if wf_positive_ratio is not None and wf_positive_ratio < 0.55:
         failed_checks.append("walk_forward_majority_negative")
+    wf_median_sharpe = as_float(wf.get("sharpe_median"))
+    if wf_median_sharpe is not None and wf_median_sharpe < 0.0:
+        failed_checks.append("walk_forward_median_sharpe_negative")
+    wf_min_sharpe = as_float(wf.get("sharpe_min"))
+    if wf_min_sharpe is not None and wf_min_sharpe < -3.0:
+        failed_checks.append("walk_forward_catastrophic_window")
+    # Reference comparison
     reference = select_reference_record(leaderboard, policy, policy.primary_metric)
     reference_value = None
     if policy.compare_to_best or policy.compare_to_candidate_id:
@@ -344,7 +485,7 @@ def evaluate_acceptance(result: dict[str, Any], policy: AcceptancePolicy, leader
 
 
 def preferred_period(periods: dict[str, Any]) -> str:
-    for name in ("outer", "test", "inner", "train"):
+    for name in ("test", "outer", "inner", "train"):
         if name in periods:
             return name
     return next(iter(periods), "inner")

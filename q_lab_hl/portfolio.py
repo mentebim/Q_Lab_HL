@@ -88,21 +88,6 @@ def exposure_diagnostics(weights: pd.Series, groups: pd.Series | None = None) ->
     return diag
 
 
-def _renormalize_sides(weights: pd.Series, gross_target: float, net_target: float) -> pd.Series:
-    weights = pd.Series(weights, dtype=float)
-    longs = weights[weights > 0.0]
-    shorts = weights[weights < 0.0]
-    if longs.empty or shorts.empty:
-        return weights
-    long_target = 0.5 * (gross_target + net_target)
-    short_target = 0.5 * (gross_target - net_target)
-    if float(longs.sum()) > 0.0:
-        weights.loc[longs.index] = longs / float(longs.sum()) * long_target
-    if float(shorts.abs().sum()) > 0.0:
-        weights.loc[shorts.index] = -shorts.abs() / float(shorts.abs().sum()) * short_target
-    return weights
-
-
 def _enforce_group_caps(weights: pd.Series, groups: pd.Series, max_group_gross: float) -> pd.Series:
     adjusted = pd.Series(weights, dtype=float).copy()
     for _ in range(20):

@@ -90,7 +90,7 @@ def build_promotion_eligibility(result: dict[str, Any]) -> PromotionEligibility:
         accepted_result=accepted_result,
         express_filter_passed=express_filter_passed,
         paper_eligible=stage_eligible,
-        live_eligible=stage_eligible,
+        live_eligible=False,
         reason=reason,
     )
 

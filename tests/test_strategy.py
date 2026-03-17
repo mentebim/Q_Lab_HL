@@ -21,7 +21,7 @@ class StatisticalStrategyTests(unittest.TestCase):
         self.assertGreater(summary["model_fit"]["n_train_rows"], 0)
         self.assertIn("funding_8h", summary["model_fit"]["coefficients"])
         self.assertIn("diagnostics", summary["model_fit"])
-        self.assertEqual(summary["strategy_spec"]["target"]["kind"], "next_open_to_close_return")
+        self.assertEqual(summary["strategy_spec"]["target"]["kind"], "forward_close_return")
 
     def test_strategy_family_rejects_unsupported_feature_kind(self):
         strategy = load_strategy("strategy.py")

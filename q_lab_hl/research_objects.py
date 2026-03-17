@@ -61,7 +61,7 @@ class StrategyFamily:
 
 @dataclass(frozen=True)
 class AcceptancePolicy:
-    primary_metric: str = "periods.outer.sharpe_annualized"
+    primary_metric: str = "periods.test.sharpe_annualized"
     primary_min: float = 0.3
     max_beta_abs: float = 0.15
     max_turnover: float = 0.75
@@ -103,9 +103,9 @@ class CandidateSpec:
     execution_overrides: dict[str, Any] | None = None
     data_dir: str = "data/active_1h/machine"
     synthetic: bool = False
-    evaluation_periods: tuple[str, ...] = ("inner", "outer")
+    evaluation_periods: tuple[str, ...] = ("inner", "outer", "test")
     notes: str = ""
-    enable_walk_forward: bool = False
+    enable_walk_forward: bool = True
     walk_forward_runway_bars: int = 504
     walk_forward_eval_bars: int = 500
     walk_forward_step_bars: int = 250

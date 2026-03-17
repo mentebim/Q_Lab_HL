@@ -34,6 +34,10 @@
     {
       "path": "autoresearch/leaderboard.jsonl",
       "role": "recent_experiment_history"
+    },
+    {
+      "path": "autoresearch/research_journal.jsonl",
+      "role": "agent_reasoning_log"
     }
   ],
   "editable_paths": [

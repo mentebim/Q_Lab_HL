@@ -4,26 +4,42 @@ import json
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
-from hyperliquid.info import Info
-from hyperliquid.utils import constants
-from hyperliquid.utils.error import ClientError
 from requests.exceptions import RequestException
+
+try:
+    from hyperliquid.info import Info
+    from hyperliquid.utils import constants
+    from hyperliquid.utils.error import ClientError
+except ImportError:  # pragma: no cover - exercised when the optional package is missing locally.
+    Info = Any  # type: ignore[assignment]
+    constants = None
+
+    class ClientError(Exception):
+        status_code: int | None = None
 
 
 DATA_DIR = Path(__file__).resolve().parent
 ACTIVE_DIR = DATA_DIR / "active_1h"
 ARCHIVE_DIR = DATA_DIR / "archive_1h"
 ACTIVE_ASSET_COUNT = 20
+ARCHIVE_CANDIDATE_COUNT = 60
 ACTIVE_HOURS = 5000
 FUNDING_CHUNK_HOURS = 500
 CLIENT_TIMEOUT_SECONDS = 20.0
 MANIFEST_NAME = "manifest.json"
 CORE_PANELS = ("open", "high", "low", "close", "volume", "trades", "funding", "tradable")
+RESEARCH_LOOKBACK_HOURS = 24 * 14
+RESEARCH_MIN_HISTORY_HOURS = RESEARCH_LOOKBACK_HOURS
+RESEARCH_REFRESH_HOURS = 24
+RESEARCH_KEEP_RANK = ACTIVE_ASSET_COUNT
 
 
 def _client() -> Info:
+    if constants is None:
+        raise RuntimeError("hyperliquid package is required to build curated datasets")
     return Info(base_url=constants.MAINNET_API_URL, skip_ws=True, timeout=CLIENT_TIMEOUT_SECONDS)
 
 
@@ -74,7 +90,7 @@ def _write_machine_json(base: Path, name: str, payload: dict) -> None:
 
 def _write_long_csv(base: Path, frames: dict[str, pd.DataFrame]) -> None:
     fields = [field for field in CORE_PANELS if field in frames]
-    parts = [frames[field].stack(dropna=False).rename(field) for field in fields]
+    parts = [frames[field].stack().rename(field) for field in fields]
     table = pd.concat(parts, axis=1).reset_index()
     table.columns = ["date", "asset", *fields]
     table.to_csv(base / "market_data.csv", index=False)
@@ -141,6 +157,21 @@ def _has_full_active_history(frame: pd.DataFrame) -> bool:
     return not frame[["o", "h", "l", "c", "v", "n"]].isna().any().any()
 
 
+def _has_any_complete_ohlcv(frame: pd.DataFrame) -> bool:
+    if frame.empty:
+        return False
+    return bool(frame[["o", "h", "l", "c", "v", "n"]].notna().all(axis=1).any())
+
+
+def _first_complete_candle_timestamp(frame: pd.DataFrame) -> pd.Timestamp | None:
+    if frame.empty:
+        return None
+    complete_rows = frame[["o", "h", "l", "c", "v", "n"]].notna().all(axis=1)
+    if not complete_rows.any():
+        return None
+    return pd.Timestamp(complete_rows[complete_rows].index[0])
+
+
 def _fetch_hourly_funding(info: Info, coin: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
     expected = pd.date_range(start.tz_localize(None), end.tz_localize(None), freq="1h", name="date")
     values: dict[pd.Timestamp, float] = {}
@@ -164,6 +195,42 @@ def _fetch_hourly_funding(info: Info, coin: str, start: pd.Timestamp, end: pd.Ti
     return pd.Series(values, dtype=float).reindex(expected)
 
 
+def _build_research_eligibility(active_frames: dict[str, pd.DataFrame], has_ohlcv: pd.DataFrame) -> pd.DataFrame:
+    close = active_frames["close"]
+    volume = active_frames["volume"]
+    tradable = active_frames["tradable"].fillna(False).astype(bool)
+    dollar_volume = (close * volume).where(has_ohlcv)
+    rolling_adv = dollar_volume.rolling(
+        RESEARCH_LOOKBACK_HOURS,
+        min_periods=RESEARCH_MIN_HISTORY_HOURS,
+    ).mean()
+    eligibility = pd.DataFrame(False, index=close.index, columns=close.columns, dtype=bool)
+    current_selection: set[str] = set()
+    timestamps = list(close.index)
+    for start_pos in range(0, len(timestamps), RESEARCH_REFRESH_HOURS):
+        ts = timestamps[start_pos]
+        candidate_scores = rolling_adv.loc[ts]
+        candidate_mask = tradable.loc[ts] & has_ohlcv.loc[ts] & candidate_scores.notna()
+        ranked_assets = (
+            candidate_scores[candidate_mask]
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+        top_assets = set(ranked_assets[:ACTIVE_ASSET_COUNT])
+        if len(ranked_assets) > RESEARCH_KEEP_RANK:
+            keep_assets = set(ranked_assets[:RESEARCH_KEEP_RANK])
+            current_selection = top_assets | {
+                asset for asset in current_selection if asset in keep_assets
+            }
+        else:
+            current_selection = top_assets
+        end_pos = min(start_pos + RESEARCH_REFRESH_HOURS, len(timestamps))
+        if current_selection:
+            eligibility.loc[timestamps[start_pos:end_pos], sorted(current_selection)] = True
+    return eligibility
+
+
 def _context_row(
     coin: str,
     universe: dict[str, dict],
@@ -179,7 +246,7 @@ def _context_row(
     return row
 
 
-def _select_active_assets(
+def _select_archive_candidates(
     info: Info,
     start: pd.Timestamp,
     end: pd.Timestamp,
@@ -189,15 +256,17 @@ def _select_active_assets(
     accepted_volume: dict[str, float] = {}
     for coin, day_ntl_vlm in ranking[["name", "dayNtlVlm"]].itertuples(index=False):
         candles = _fetch_hourly_candles(info, coin, start, end)
-        if not _has_full_active_history(candles):
+        if not _has_any_complete_ohlcv(candles):
             continue
         accepted_candles[coin] = candles
         accepted_volume[coin] = float(day_ntl_vlm)
-        if len(accepted_candles) >= ACTIVE_ASSET_COUNT:
+        if len(accepted_candles) >= ARCHIVE_CANDIDATE_COUNT:
             break
         time.sleep(0.2)
-    if len(accepted_candles) != ACTIVE_ASSET_COUNT:
-        raise RuntimeError(f"Expected {ACTIVE_ASSET_COUNT} active assets, found {len(accepted_candles)}")
+    if len(accepted_candles) < ACTIVE_ASSET_COUNT:
+        raise RuntimeError(
+            f"Expected at least {ACTIVE_ASSET_COUNT} archive candidates, found {len(accepted_candles)}"
+        )
     return accepted_candles, accepted_volume, universe, context
 
 
@@ -349,18 +418,21 @@ def _update_archive_dataset(
 
 def _build_active_from_archive(
     archive_frames: dict[str, pd.DataFrame],
-    active_coins: list[str],
     start: pd.Timestamp,
     end: pd.Timestamp,
     volume_ranking: dict[str, float],
     first_included_at: dict[str, str],
     universe: dict[str, dict],
     context: dict[str, dict],
-    *,
-    membership_unchanged: bool,
 ) -> None:
     _reset_dataset_dir(ACTIVE_DIR)
     index = pd.date_range(start.tz_localize(None), end.tz_localize(None), freq="1h", name="date")
+    close_window = archive_frames["close"].reindex(index=index)
+    active_coins = [
+        coin for coin in close_window.columns
+        if close_window[coin].notna().any()
+    ]
+    active_coins = sorted(active_coins)
 
     active_frames = {}
     for name in CORE_PANELS:
@@ -380,14 +452,14 @@ def _build_active_from_archive(
     )
     _write_panel(ACTIVE_DIR, "has_ohlcv", has_ohlcv)
     _write_panel(ACTIVE_DIR, "has_funding", active_frames["funding"].notna())
-    _write_panel(ACTIVE_DIR, "is_research_eligible", has_ohlcv)
+    _write_panel(ACTIVE_DIR, "is_research_eligible", _build_research_eligibility(active_frames, has_ohlcv))
 
     metadata = {
         coin: _context_row(
             coin,
             universe,
             context,
-            first_included_at=first_included_at[coin],
+            first_included_at=first_included_at.get(coin, str(start.tz_localize(None))),
             window_start=str(start.tz_localize(None)),
             window_end=str(end.tz_localize(None)),
         )
@@ -405,10 +477,14 @@ def _build_active_from_archive(
         "window_end": str(end.tz_localize(None)),
         "window_hours": ACTIVE_HOURS,
         "coins": active_coins,
-        "selection_rule": "descending_current_dayNtlVlm_then_full_5000h_ohlcv_history",
-        "volume_ranking": volume_ranking,
+        "selection_rule": "point_in_time_trailing_14d_adv_strict_top20_within_archive",
+        "archive_source_assets": len(active_coins),
+        "research_target_assets": ACTIVE_ASSET_COUNT,
+        "research_keep_rank": RESEARCH_KEEP_RANK,
+        "research_refresh_hours": RESEARCH_REFRESH_HOURS,
+        "research_lookback_hours": RESEARCH_LOOKBACK_HOURS,
+        "archive_ranking_snapshot": volume_ranking,
         "source": "archive_1h",
-        "membership_unchanged": membership_unchanged,
     }
     (ACTIVE_DIR / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
     (ACTIVE_DIR / "schema.json").write_text(
@@ -433,18 +509,19 @@ def _build_active_from_archive(
 def main() -> None:
     info = _client()
     active_start, active_end = _active_window()
-    selected_candles, volume_ranking, universe, context = _select_active_assets(info, active_start, active_end)
-    active_coins = list(selected_candles.keys())
-    first_included_at = {coin: str(active_start.tz_localize(None)) for coin in active_coins}
-
-    previous_active = _read_manifest(ACTIVE_DIR)
-    previous_coins = previous_active.get("coins", [])
-    membership_unchanged = len(previous_coins) == len(active_coins) and set(previous_coins) == set(active_coins)
+    selected_candles, volume_ranking, universe, context = _select_archive_candidates(info, active_start, active_end)
+    archive_candidates = list(selected_candles.keys())
+    first_included_at = {}
+    for coin, candles in selected_candles.items():
+        first_valid = _first_complete_candle_timestamp(candles)
+        if first_valid is None:
+            continue
+        first_included_at[coin] = str(first_valid)
 
     archive_frames, archive_manifest = _update_archive_dataset(
         info,
         selected_candles,
-        active_coins,
+        archive_candidates,
         first_included_at,
         active_start,
         active_end,
@@ -452,26 +529,29 @@ def main() -> None:
         context,
     )
     archive_first_included = archive_manifest["first_included_at"]
-    active_first_included = {coin: archive_first_included[coin] for coin in active_coins}
     _build_active_from_archive(
         archive_frames,
-        active_coins,
         active_start,
         active_end,
         volume_ranking,
-        active_first_included,
+        archive_first_included,
         universe,
         context,
-        membership_unchanged=membership_unchanged,
     )
 
     print(
         json.dumps(
             {
                 "status": "ok",
-                "membership_unchanged": membership_unchanged,
                 "active_1h": {
-                    "coins": active_coins,
+                    "coins": sorted(
+                        coin
+                        for coin in archive_frames["close"].columns
+                        if archive_frames["close"].loc[
+                            active_start.tz_localize(None):active_end.tz_localize(None),
+                            coin,
+                        ].notna().any()
+                    ),
                     "start": str(active_start.tz_localize(None)),
                     "end": str(active_end.tz_localize(None)),
                     "path": str(ACTIVE_DIR),

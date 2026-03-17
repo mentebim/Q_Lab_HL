@@ -34,7 +34,7 @@ LINEAR_CROSS_SECTION_FAMILY = StrategyFamilyDefinition(
     description="Approved cross-sectional linear family for bounded Hyperliquid candidate search.",
     allowed_feature_kinds=("return", "volatility", "ma_gap", "funding_mean", "high_low_range", "oi_change", "funding_momentum"),
     allowed_transforms=("zscore", "rank", "none"),
-    allowed_target_kinds=("next_open_to_close_return", "next_close_to_close_return"),
+    allowed_target_kinds=("next_open_to_close_return", "next_close_to_close_return", "forward_close_return"),
     allowed_model_families=("ols", "ridge", "lasso", "elastic_net"),
     min_features=1,
     max_features=12,
@@ -60,6 +60,7 @@ class FeatureSpec:
 class TargetSpec:
     name: str
     kind: str
+    horizon: int = 1
 
 
 @dataclass(frozen=True)
@@ -112,7 +113,7 @@ def feature_spec_from_dict(payload: dict[str, Any]) -> FeatureSpec:
 
 
 def target_spec_from_dict(payload: dict[str, Any]) -> TargetSpec:
-    return TargetSpec(name=str(payload["name"]), kind=str(payload["kind"]))
+    return TargetSpec(name=str(payload["name"]), kind=str(payload["kind"]), horizon=int(payload.get("horizon", 1)))
 
 
 def model_spec_from_dict(payload: dict[str, Any]) -> ModelSpec:
@@ -542,6 +543,7 @@ def _get_cached_frames(base_store, feature_specs: tuple[FeatureSpec, ...], targe
         id(base_store),
         tuple((spec.name, spec.kind, spec.lookback) for spec in feature_specs),
         target_spec.kind,
+        target_spec.horizon,
     )
     cached = _FRAME_CACHE.get(key)
     if cached is not None:
@@ -564,10 +566,13 @@ def _get_cached_frames(base_store, feature_specs: tuple[FeatureSpec, ...], targe
 
 
 def _build_target_frame(close: pd.DataFrame, open_: pd.DataFrame, target_spec: TargetSpec) -> pd.DataFrame:
+    h = target_spec.horizon
     if target_spec.kind == "next_open_to_close_return":
-        return close.shift(-1) / open_.shift(-1) - 1.0
+        return close.shift(-h) / open_.shift(-h) - 1.0
     if target_spec.kind == "next_close_to_close_return":
-        return close.shift(-1) / close - 1.0
+        return close.shift(-h) / close - 1.0
+    if target_spec.kind == "forward_close_return":
+        return close.shift(-h) / close - 1.0
     raise ValueError(f"Unsupported target kind '{target_spec.kind}'")
 
 

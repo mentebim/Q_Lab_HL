@@ -84,7 +84,7 @@ def rolling_median_sharpe(active_returns: pd.Series, bars_per_year: int, window:
 
 
 def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, dict]:
-    median_active_sharpe, instability = rolling_median_sharpe(result.active_returns, bars_per_year)
+    median_sharpe, instability = rolling_median_sharpe(result.returns, bars_per_year)
     turnover = float(result.turnover.mean()) if not result.turnover.empty else 0.0
     beta = beta_to_market(result.returns, result.returns - result.active_returns)
     max_abs = float(result.diagnostics.get("final_weight_diagnostics", {}).get("max_abs_weight", 0.0))
@@ -97,7 +97,7 @@ def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, 
     capacity_penalty = 0.0
     implementation_shortfall_penalty = skipped_notional_ratio * 4.0
     score = (
-        median_active_sharpe
+        median_sharpe
         - turnover_penalty
         - beta_penalty
         - concentration_penalty
@@ -106,8 +106,8 @@ def inner_objective(result: BacktestResult, bars_per_year: int) -> tuple[float, 
         - implementation_shortfall_penalty
     )
     return score, {
-        "rolling_median_active_sharpe": median_active_sharpe,
-        "rolling_active_sharpe_iqr": instability,
+        "rolling_median_sharpe": median_sharpe,
+        "rolling_sharpe_iqr": instability,
         "turnover_penalty": turnover_penalty,
         "beta_penalty": beta_penalty,
         "concentration_penalty": concentration_penalty,
@@ -152,7 +152,7 @@ def evaluate_timestamps(
     result = run_backtest(strategy_module, data_store, timestamps=pd.DatetimeIndex(timestamps), execution=execution)
     market_returns = result.returns - result.active_returns
     ci_low, ci_high = bootstrap_sharpe_ci(
-        result.active_returns,
+        result.returns,
         execution.bars_per_year,
         n_boot=bootstrap_samples,
     )
@@ -170,7 +170,7 @@ def evaluate_timestamps(
         "beta_to_market": beta_to_market(result.returns, market_returns),
         "funding_pnl_share": _share(result.funding_pnl.sum(), result.returns.sum()),
         "fee_and_slippage_share": _share(result.cost_pnl.sum(), result.returns.sum()),
-        "active_sharpe_ci": (ci_low, ci_high),
+        "sharpe_ci": (ci_low, ci_high),
         "trade_count": int(result.diagnostics.get("trade_count", 0)),
         "filtered_assets_total": int(result.diagnostics.get("filtered_assets_total", 0)),
         "avg_child_orders_per_rebalance": float(result.diagnostics.get("avg_child_orders_per_rebalance", 0.0)),
@@ -205,9 +205,9 @@ def format_metrics(metrics: dict) -> str:
         "beta_to_market",
         "funding_pnl_share",
         "fee_and_slippage_share",
-        "active_sharpe_ci",
-        "rolling_median_active_sharpe",
-        "rolling_active_sharpe_iqr",
+        "sharpe_ci",
+        "rolling_median_sharpe",
+        "rolling_sharpe_iqr",
         "turnover_penalty",
         "beta_penalty",
         "concentration_penalty",

@@ -10,8 +10,9 @@
     "min_train_rows": 200,
     "position_bucket": 4,
     "target": {
-      "name": "next_bar_open_to_close",
-      "kind": "next_open_to_close_return"
+      "name": "fwd_48h_close",
+      "kind": "forward_close_return",
+      "horizon": 48
     },
     "model": {
       "family": "ridge",
@@ -35,12 +36,13 @@
   "synthetic": false,
   "evaluation_periods": [
     "inner",
-    "outer"
+    "outer",
+    "test"
   ],
-  "enable_walk_forward": false,
-  "notes": "Copy this template for new bounded candidate searches.",
+  "enable_walk_forward": true,
+  "notes": "Copy this template for new bounded candidate searches. Target horizon should match rebalance_every_bars.",
   "express_filter": {
-    "enabled": false,
+    "enabled": true,
     "period": "outer",
     "trailing_bars": 2880,
     "max_assets": 20,
@@ -51,7 +53,7 @@
     "max_turnover": 1.0
   },
   "acceptance": {
-    "primary_metric": "periods.outer.sharpe_annualized",
+    "primary_metric": "periods.test.sharpe_annualized",
     "primary_min": 0.3,
     "max_beta_abs": 0.15,
     "max_turnover": 0.75,

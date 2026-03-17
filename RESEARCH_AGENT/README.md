@@ -8,11 +8,15 @@ It is not a second repo contract. The canonical files remain in the main repo.
 
 ## Agent Job
 
+The agent searches for candidates that survive a 5-stage evaluation cascade (Express → Inner → Outer → Test → Walk-Forward). It judges on **absolute Sharpe**, not active Sharpe.
+
 The agent should:
 
 - propose bounded quant research candidates
-- run the express filter and full judge through the existing pipeline
-- inspect result artifacts and leaderboard rows
+- run the 5-stage cascade through the existing pipeline
+- read result JSONs (not just leaderboard) to diagnose which stage and gate failed
+- log structured reasoning to `autoresearch/research_journal.jsonl`
+- change one variable at a time to learn from each experiment
 - improve candidate specs without changing the fixed judge
 
 The agent should not:
@@ -21,6 +25,7 @@ The agent should not:
 - modify cache ingestion semantics
 - weaken the evaluator
 - promote directly to champions
+- optimize for active (benchmark-relative) Sharpe
 
 ## Load Order
 
@@ -32,6 +37,7 @@ The agent should not:
 6. `strategy_model.py`
 7. `strategy.py`
 8. `autoresearch/leaderboard.jsonl`
+9. `autoresearch/research_journal.jsonl`
 
 ## Editable Surface
 
