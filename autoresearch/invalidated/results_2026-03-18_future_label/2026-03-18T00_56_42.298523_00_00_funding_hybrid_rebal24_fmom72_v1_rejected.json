@@ -1,0 +1,898 @@
+{
+  "acceptance": {
+    "accepted": false,
+    "cascade_stage": "test",
+    "failed_checks": [
+      "outer_test_sign_consistency",
+      "primary_metric"
+    ],
+    "judged_period": "test",
+    "primary_metric": "periods.test.sharpe_annualized",
+    "primary_metric_value": -1.4813413101272688,
+    "reference_candidate_id": null,
+    "reference_experiment_id": null,
+    "reference_primary_value": null,
+    "review_reasons": [],
+    "status": "rejected"
+  },
+  "candidate_id": "funding_hybrid_rebal24_fmom72_v1",
+  "data": {
+    "assets": 60,
+    "bars": 5000,
+    "mode": "parquet",
+    "path": "data/active_1h/machine"
+  },
+  "execution": {
+    "assumed_leverage": 3.0,
+    "bars_per_year": 8760,
+    "listing_cooldown_bars": 0,
+    "max_abs_weight": 0.2,
+    "max_gross_exposure": 1.5,
+    "max_group_gross": 0.35,
+    "max_net_deviation": 0.05,
+    "max_single_order_notional_usd": 250.0,
+    "min_dollar_volume": 0.0,
+    "min_history_bars": 0,
+    "min_price": 0.0,
+    "min_trade_notional_usd": 10.0,
+    "rebalance_every_bars": 24,
+    "reference_account_value_usd": 250.0,
+    "slippage_bps": 3.0,
+    "taker_fee_bps": 4.5,
+    "target_gross_exposure": 1.0,
+    "target_margin_usage_ratio": 0.5,
+    "target_net_exposure": 0.0
+  },
+  "experiment_id": "funding_hybrid_rebal24_fmom72_v1",
+  "express_filter": {
+    "data": {
+      "assets": [
+        "BTC",
+        "ETH",
+        "HYPE",
+        "SOL",
+        "XRP",
+        "TRUMP",
+        "ZEC",
+        "TAO",
+        "SUI",
+        "kPEPE",
+        "FARTCOIN",
+        "DOGE",
+        "PAXG",
+        "PUMP",
+        "XPL",
+        "LINK",
+        "VVV",
+        "LIT",
+        "BNB",
+        "NEAR"
+      ],
+      "bars": 2880,
+      "end": "2026-03-16 18:00:00",
+      "start": "2025-11-16 19:00:00"
+    },
+    "enabled": true,
+    "failed_checks": [],
+    "metrics": {
+      "active_annualized_return": 1.9493995186621742,
+      "active_sharpe_annualized": 1.782026990925192,
+      "annualized_return": 1.7850890636856498,
+      "avg_child_orders_per_rebalance": 10.056603773584905,
+      "avg_gross_exposure": 0.9996069182389937,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": 6.81342648268878e-18,
+      "bars": 2544,
+      "beta_penalty": 0.0,
+      "beta_to_market": -0.020108934486122613,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.12640660352483463,
+      "fee_and_slippage_share": 0.11834599783768637,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": 0.015568598587588247,
+      "implementation_shortfall_penalty": 0.14481310753631538,
+      "implemented_delta_notional_total_usd": 35786.595994697076,
+      "instability_penalty": 0.33943294367139554,
+      "max_drawdown": -0.10466743132485534,
+      "period": "express_all",
+      "rolling_median_sharpe": 4.911422071941484,
+      "rolling_sharpe_iqr": 8.262886291142637,
+      "score_inner": 4.154450948578423,
+      "sharpe_annualized": 3.2263581920727296,
+      "sharpe_ci": [
+        1.9065080989085177,
+        4.8497148830202015
+      ],
+      "skipped_notional_ratio": 0.036203276884078844,
+      "skipped_notional_total_usd": 1344.2586102036967,
+      "trade_count": 106,
+      "turnover": 0.4670547749044124,
+      "turnover_penalty": 0.1463184686305155
+    },
+    "passed": true,
+    "period": "outer",
+    "primary_metric": "sharpe_annualized",
+    "primary_metric_value": 3.2263581920727296,
+    "status": "passed"
+  },
+  "git_commit": "bac258e1ee3d00c787dda153012b3da6ee56d224",
+  "hypothesis": "rebal24 hybrid is 0.26 from CI passing. Add fmom_72h as 7th feature \u2014 a longer funding momentum lookback that captures medium-term funding regime changes. More diverse signal \u2192 marginally higher Sharpe \u2192 CI crosses zero.",
+  "model_fit": {
+    "model_fit": {
+      "coefficients": {
+        "fmom_48h": -0.0031610823339523935,
+        "fmom_72h": 0.007581926814552876,
+        "funding_24h": 0.013122024091957285,
+        "funding_72h": -0.03150453508075121,
+        "funding_8h": 0.006815354426831635,
+        "ret_168h": 0.014344291871198563,
+        "ret_48h": 0.007423675366348111
+      },
+      "diagnostics": {
+        "cross_sectional_pearson_ic_mean": 0.12744193216477948,
+        "cross_sectional_pearson_ic_median": 0.13356934410746027,
+        "cross_sectional_pearson_ic_positive_share": 0.6616052060737527,
+        "cross_sectional_rank_ic_mean": 0.08316344005349598,
+        "cross_sectional_rank_ic_median": 0.07518796992481201,
+        "cross_sectional_rank_ic_positive_share": 0.5878524945770065,
+        "n_features": 7,
+        "ols_residual_dof": 9212,
+        "ols_sigma2": 0.004662403024596428,
+        "parameter_std_error": {
+          "fmom_48h": 0.0031160625123695207,
+          "fmom_72h": 0.0030818038473077107,
+          "funding_24h": 0.005614077327730678,
+          "funding_72h": 0.004459842541520387,
+          "funding_8h": 0.004866658658012915,
+          "intercept": 0.000721360056589137,
+          "ret_168h": 0.002804478427388307,
+          "ret_48h": 0.0028078620022755083
+        },
+        "parameter_t_stat": {
+          "fmom_48h": -1.0144476631659867,
+          "fmom_72h": 2.4602236839883593,
+          "funding_24h": 2.3373429552067586,
+          "funding_72h": -7.064046496585758,
+          "funding_8h": 1.4004175977310855,
+          "intercept": 16.781042008051152,
+          "ret_168h": 5.114780606302185,
+          "ret_48h": 2.643888966171386
+        },
+        "top_bottom_quintile_target_spread_mean": 0.022955600599816543,
+        "top_bottom_quintile_target_spread_median": 0.01675180690832956,
+        "train_adj_r2": 0.014330801037970131,
+        "train_mae": 0.04976735937090662,
+        "train_prediction_target_corr": 0.12279747995272533,
+        "train_prediction_target_rank_corr": 0.07560504861032619,
+        "train_r2": 0.015079221082740069,
+        "train_rmse": 0.06825216154521854
+      },
+      "family": "ols",
+      "intercept": 0.012105173412552465,
+      "l1_reg": 0.0,
+      "l2_reg": 0.0,
+      "n_train_rows": 9220,
+      "train_end": "2026-03-14T18:00:00",
+      "train_start": "2026-02-23T14:00:00"
+    },
+    "strategy_spec": {
+      "features": [
+        {
+          "clip": null,
+          "kind": "funding_mean",
+          "lookback": 8,
+          "name": "funding_8h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "funding_mean",
+          "lookback": 24,
+          "name": "funding_24h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "funding_mean",
+          "lookback": 72,
+          "name": "funding_72h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "funding_momentum",
+          "lookback": 48,
+          "name": "fmom_48h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "funding_momentum",
+          "lookback": 72,
+          "name": "fmom_72h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "return",
+          "lookback": 48,
+          "name": "ret_48h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "return",
+          "lookback": 168,
+          "name": "ret_168h",
+          "transform": "rank"
+        }
+      ],
+      "min_train_rows": 200,
+      "model": {
+        "family": "ols",
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "prediction_clip": 3.0
+      },
+      "position_bucket": 5,
+      "target": {
+        "horizon": 48,
+        "kind": "forward_close_return",
+        "name": "fwd_48h_close"
+      },
+      "train_window_bars": 504
+    }
+  },
+  "notes": "rebal24 hybrid + fmom_72h for additional funding momentum signal.",
+  "period_model_fit": {
+    "inner": {
+      "model_fit": {
+        "coefficients": {
+          "fmom_48h": 0.006801599018313658,
+          "fmom_72h": 0.003060988993098266,
+          "funding_24h": -0.018933927729144335,
+          "funding_72h": 0.026342159337804212,
+          "funding_8h": 0.00323611722518531,
+          "ret_168h": -0.0021234978240526206,
+          "ret_48h": 0.018288909267268148
+        },
+        "diagnostics": {
+          "cross_sectional_pearson_ic_mean": 0.11956181712584484,
+          "cross_sectional_pearson_ic_median": 0.10321533843588548,
+          "cross_sectional_pearson_ic_positive_share": 0.6170634920634921,
+          "cross_sectional_rank_ic_mean": 0.06858813700918964,
+          "cross_sectional_rank_ic_median": 0.04887218045112782,
+          "cross_sectional_rank_ic_positive_share": 0.5714285714285714,
+          "n_features": 7,
+          "ols_residual_dof": 10072,
+          "ols_sigma2": 0.0036667229771852046,
+          "parameter_std_error": {
+            "fmom_48h": 0.0027715247327487363,
+            "fmom_72h": 0.0027535364757495856,
+            "funding_24h": 0.004518377205020921,
+            "funding_72h": 0.0035999309238837207,
+            "funding_8h": 0.0041612730009333455,
+            "intercept": 0.0006116295077345822,
+            "ret_168h": 0.0023499521321394875,
+            "ret_48h": 0.0023762551350590654
+          },
+          "parameter_t_stat": {
+            "fmom_48h": 2.454100061942433,
+            "fmom_72h": 1.111657325064119,
+            "funding_24h": -4.19042653369102,
+            "funding_72h": 7.317406887737015,
+            "funding_8h": 0.7776748183691554,
+            "intercept": 21.602204213067232,
+            "ret_168h": -0.9036345017459169,
+            "ret_48h": 7.696525931679281
+          },
+          "top_bottom_quintile_target_spread_mean": 0.017415262427061654,
+          "top_bottom_quintile_target_spread_median": 0.013999602884916015,
+          "train_adj_r2": 0.013455291206990294,
+          "train_mae": 0.043037712651274936,
+          "train_prediction_target_corr": 0.11891366478361438,
+          "train_prediction_target_rank_corr": 0.06290752999404149,
+          "train_r2": 0.014140459672269734,
+          "train_rmse": 0.060529438123810994
+        },
+        "family": "ols",
+        "intercept": 0.013212545528820228,
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "n_train_rows": 10080,
+        "train_end": "2026-01-07T03:00:00",
+        "train_start": "2025-12-17T04:00:00"
+      },
+      "strategy_spec": {
+        "features": [
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 8,
+            "name": "funding_8h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 24,
+            "name": "funding_24h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 72,
+            "name": "funding_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 48,
+            "name": "fmom_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 72,
+            "name": "fmom_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 48,
+            "name": "ret_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 168,
+            "name": "ret_168h",
+            "transform": "rank"
+          }
+        ],
+        "min_train_rows": 200,
+        "model": {
+          "family": "ols",
+          "l1_reg": 0.0,
+          "l2_reg": 0.0,
+          "prediction_clip": 3.0
+        },
+        "position_bucket": 5,
+        "target": {
+          "horizon": 48,
+          "kind": "forward_close_return",
+          "name": "fwd_48h_close"
+        },
+        "train_window_bars": 504
+      }
+    },
+    "outer": {
+      "model_fit": {
+        "coefficients": {
+          "fmom_48h": -0.010436904545649831,
+          "fmom_72h": 0.003649182908536975,
+          "funding_24h": 0.0552850704998593,
+          "funding_72h": -0.029003700553891693,
+          "funding_8h": 0.0020629810547119036,
+          "ret_168h": 0.004262758005926808,
+          "ret_48h": 0.019992394527833097
+        },
+        "diagnostics": {
+          "cross_sectional_pearson_ic_mean": 0.20576496598333646,
+          "cross_sectional_pearson_ic_median": 0.2275912315762897,
+          "cross_sectional_pearson_ic_positive_share": 0.7718253968253969,
+          "cross_sectional_rank_ic_mean": 0.14513963480128894,
+          "cross_sectional_rank_ic_median": 0.14285714285714285,
+          "cross_sectional_rank_ic_positive_share": 0.746031746031746,
+          "n_features": 7,
+          "ols_residual_dof": 10072,
+          "ols_sigma2": 0.007952224032090862,
+          "parameter_std_error": {
+            "fmom_48h": 0.003883774625831386,
+            "fmom_72h": 0.0037429720275912173,
+            "funding_24h": 0.008390231938749729,
+            "funding_72h": 0.006709335343985077,
+            "funding_8h": 0.006966041141528629,
+            "intercept": 0.0009006134712978889,
+            "ret_168h": 0.0035540136186401894,
+            "ret_48h": 0.003561218573058484
+          },
+          "parameter_t_stat": {
+            "fmom_48h": -2.687309525180195,
+            "fmom_72h": 0.974942607542114,
+            "funding_24h": 6.589218379593164,
+            "funding_72h": -4.322887300586864,
+            "funding_8h": 0.2961482731437332,
+            "intercept": -15.149171825188748,
+            "ret_168h": 1.1994208417124166,
+            "ret_48h": 5.613919538407611
+          },
+          "top_bottom_quintile_target_spread_mean": 0.036207108670419784,
+          "top_bottom_quintile_target_spread_median": 0.03380197761652992,
+          "train_adj_r2": 0.018224381693254244,
+          "train_mae": 0.06489070728531275,
+          "train_prediction_target_corr": 0.13749995622380903,
+          "train_prediction_target_rank_corr": 0.09918311391219284,
+          "train_r2": 0.018906237961549444,
+          "train_rmse": 0.08913984935581003
+        },
+        "family": "ols",
+        "intercept": -0.013643548224771415,
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "n_train_rows": 10080,
+        "train_end": "2026-02-14T17:00:00",
+        "train_start": "2026-01-24T18:00:00"
+      },
+      "strategy_spec": {
+        "features": [
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 8,
+            "name": "funding_8h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 24,
+            "name": "funding_24h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 72,
+            "name": "funding_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 48,
+            "name": "fmom_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 72,
+            "name": "fmom_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 48,
+            "name": "ret_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 168,
+            "name": "ret_168h",
+            "transform": "rank"
+          }
+        ],
+        "min_train_rows": 200,
+        "model": {
+          "family": "ols",
+          "l1_reg": 0.0,
+          "l2_reg": 0.0,
+          "prediction_clip": 3.0
+        },
+        "position_bucket": 5,
+        "target": {
+          "horizon": 48,
+          "kind": "forward_close_return",
+          "name": "fwd_48h_close"
+        },
+        "train_window_bars": 504
+      }
+    },
+    "test": {
+      "model_fit": {
+        "coefficients": {
+          "fmom_48h": -0.0031610823339523935,
+          "fmom_72h": 0.007581926814552876,
+          "funding_24h": 0.013122024091957285,
+          "funding_72h": -0.03150453508075121,
+          "funding_8h": 0.006815354426831635,
+          "ret_168h": 0.014344291871198563,
+          "ret_48h": 0.007423675366348111
+        },
+        "diagnostics": {
+          "cross_sectional_pearson_ic_mean": 0.12744193216477948,
+          "cross_sectional_pearson_ic_median": 0.13356934410746027,
+          "cross_sectional_pearson_ic_positive_share": 0.6616052060737527,
+          "cross_sectional_rank_ic_mean": 0.08316344005349598,
+          "cross_sectional_rank_ic_median": 0.07518796992481201,
+          "cross_sectional_rank_ic_positive_share": 0.5878524945770065,
+          "n_features": 7,
+          "ols_residual_dof": 9212,
+          "ols_sigma2": 0.004662403024596428,
+          "parameter_std_error": {
+            "fmom_48h": 0.0031160625123695207,
+            "fmom_72h": 0.0030818038473077107,
+            "funding_24h": 0.005614077327730678,
+            "funding_72h": 0.004459842541520387,
+            "funding_8h": 0.004866658658012915,
+            "intercept": 0.000721360056589137,
+            "ret_168h": 0.002804478427388307,
+            "ret_48h": 0.0028078620022755083
+          },
+          "parameter_t_stat": {
+            "fmom_48h": -1.0144476631659867,
+            "fmom_72h": 2.4602236839883593,
+            "funding_24h": 2.3373429552067586,
+            "funding_72h": -7.064046496585758,
+            "funding_8h": 1.4004175977310855,
+            "intercept": 16.781042008051152,
+            "ret_168h": 5.114780606302185,
+            "ret_48h": 2.643888966171386
+          },
+          "top_bottom_quintile_target_spread_mean": 0.022955600599816543,
+          "top_bottom_quintile_target_spread_median": 0.01675180690832956,
+          "train_adj_r2": 0.014330801037970131,
+          "train_mae": 0.04976735937090662,
+          "train_prediction_target_corr": 0.12279747995272533,
+          "train_prediction_target_rank_corr": 0.07560504861032619,
+          "train_r2": 0.015079221082740069,
+          "train_rmse": 0.06825216154521854
+        },
+        "family": "ols",
+        "intercept": 0.012105173412552465,
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "n_train_rows": 9220,
+        "train_end": "2026-03-14T18:00:00",
+        "train_start": "2026-02-23T14:00:00"
+      },
+      "strategy_spec": {
+        "features": [
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 8,
+            "name": "funding_8h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 24,
+            "name": "funding_24h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 72,
+            "name": "funding_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 48,
+            "name": "fmom_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_momentum",
+            "lookback": 72,
+            "name": "fmom_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 48,
+            "name": "ret_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 168,
+            "name": "ret_168h",
+            "transform": "rank"
+          }
+        ],
+        "min_train_rows": 200,
+        "model": {
+          "family": "ols",
+          "l1_reg": 0.0,
+          "l2_reg": 0.0,
+          "prediction_clip": 3.0
+        },
+        "position_bucket": 5,
+        "target": {
+          "horizon": 48,
+          "kind": "forward_close_return",
+          "name": "fwd_48h_close"
+        },
+        "train_window_bars": 504
+      }
+    }
+  },
+  "periods": {
+    "inner": {
+      "active_annualized_return": 2.6643203015983765,
+      "active_sharpe_annualized": 2.139838594948403,
+      "annualized_return": 1.914087070833265,
+      "avg_child_orders_per_rebalance": 11.16326530612245,
+      "avg_gross_exposure": 0.9991423670668954,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": -6.87938366459413e-18,
+      "bars": 1166,
+      "beta_penalty": 0.0,
+      "beta_to_market": 0.03686898447345083,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.12914295651800234,
+      "fee_and_slippage_share": 0.13157110681517847,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": 0.0034116417329296263,
+      "implementation_shortfall_penalty": 0.14321109853895567,
+      "implemented_delta_notional_total_usd": 18969.443117967738,
+      "instability_penalty": 0.5646186905482234,
+      "max_drawdown": -0.07184935537662862,
+      "period": "inner",
+      "rolling_median_sharpe": 2.914727521454142,
+      "rolling_sharpe_iqr": 9.764124603654823,
+      "score_inner": 1.8460772085437371,
+      "sharpe_annualized": 3.4232545758970643,
+      "sharpe_ci": [
+        -1.1968131488096039,
+        8.070526655245573
+      ],
+      "skipped_notional_ratio": 0.03580277463473892,
+      "skipped_notional_total_usd": 704.3773608058417,
+      "trade_count": 49,
+      "turnover": 0.535342053844179,
+      "turnover_penalty": 0.23167756730522376
+    },
+    "outer": {
+      "active_annualized_return": 58.98256292180968,
+      "active_sharpe_annualized": 5.279664634819522,
+      "annualized_return": 4.677908811824489,
+      "avg_child_orders_per_rebalance": 11.333333333333334,
+      "avg_gross_exposure": 0.9989270386266095,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": 1.0869941094103597e-17,
+      "bars": 932,
+      "beta_penalty": 0.0,
+      "beta_to_market": -0.04350190608314298,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.008411971952640901,
+      "fee_and_slippage_share": 0.08152368731271885,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": -0.023689701135229235,
+      "implementation_shortfall_penalty": 0.13143405002290007,
+      "implemented_delta_notional_total_usd": 15021.751371560214,
+      "instability_penalty": 0.0,
+      "max_drawdown": -0.056428276908975006,
+      "period": "outer",
+      "rolling_median_sharpe": 5.75950001372848,
+      "rolling_sharpe_iqr": 4.644192675230528,
+      "score_inner": 5.393388456803108,
+      "sharpe_annualized": 5.44552896185433,
+      "sharpe_ci": [
+        0.9112355353201919,
+        11.305820393969158
+      ],
+      "skipped_notional_ratio": 0.03285851250572502,
+      "skipped_notional_total_usd": 510.3621462658275,
+      "trade_count": 39,
+      "turnover": 0.5310124279598646,
+      "turnover_penalty": 0.22626553494983076
+    },
+    "test": {
+      "active_annualized_return": -0.8648931204715182,
+      "active_sharpe_annualized": -2.4510919683763857,
+      "annualized_return": -0.4035735124937906,
+      "avg_child_orders_per_rebalance": 11.733333333333333,
+      "avg_gross_exposure": 0.9985734664764622,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": 4.3553684988861345e-18,
+      "bars": 701,
+      "beta_penalty": 0.0,
+      "beta_to_market": -0.026239941786081564,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.08740650185126997,
+      "fee_and_slippage_share": -0.34179830152517304,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": -0.21520921685035593,
+      "implementation_shortfall_penalty": 0.09909395510901946,
+      "implemented_delta_notional_total_usd": 12459.889375897508,
+      "instability_penalty": 0.34366566607509375,
+      "max_drawdown": -0.12353986901665548,
+      "period": "test",
+      "rolling_median_sharpe": 0.5487570554349712,
+      "rolling_sharpe_iqr": 8.291104440500625,
+      "score_inner": -0.253709373962926,
+      "sharpe_annualized": -1.4813413101272688,
+      "sharpe_ci": [
+        -6.842033577239652,
+        3.988645549025023
+      ],
+      "skipped_notional_ratio": 0.024773488777254864,
+      "skipped_notional_total_usd": 316.5161386277486,
+      "trade_count": 30,
+      "turnover": 0.5678402450900112,
+      "turnover_penalty": 0.272300306362514
+    }
+  },
+  "promotion_eligibility": {
+    "accepted_result": false,
+    "express_filter_passed": true,
+    "live_eligible": false,
+    "paper_eligible": false,
+    "reason": "judge_not_accepted"
+  },
+  "research_policy_path": "autoresearch/research_policy.json",
+  "result_path": "autoresearch/results/2026-03-18T00_56_42.298523_00_00_funding_hybrid_rebal24_fmom72_v1_rejected.json",
+  "spec": {
+    "acceptance": {
+      "compare_to_best": false,
+      "compare_to_candidate_id": null,
+      "max_beta_abs": 0.15,
+      "max_turnover": 0.75,
+      "min_primary_lift": 0.0,
+      "primary_metric": "periods.test.sharpe_annualized",
+      "primary_min": 0.3
+    },
+    "candidate_id": "funding_hybrid_rebal24_fmom72_v1",
+    "data_dir": "data/active_1h/machine",
+    "enable_walk_forward": true,
+    "evaluation_periods": [
+      "inner",
+      "outer",
+      "test"
+    ],
+    "execution_overrides": {
+      "rebalance_every_bars": 24
+    },
+    "experiment_id": "funding_hybrid_rebal24_fmom72_v1",
+    "express_filter": {
+      "bootstrap_samples": 10,
+      "enabled": true,
+      "max_assets": 20,
+      "max_beta_abs": 0.25,
+      "max_turnover": 1.0,
+      "period": "outer",
+      "primary_metric": "sharpe_annualized",
+      "primary_min": -0.5,
+      "trailing_bars": 2880
+    },
+    "hypothesis": "rebal24 hybrid is 0.26 from CI passing. Add fmom_72h as 7th feature \u2014 a longer funding momentum lookback that captures medium-term funding regime changes. More diverse signal \u2192 marginally higher Sharpe \u2192 CI crosses zero.",
+    "notes": "rebal24 hybrid + fmom_72h for additional funding momentum signal.",
+    "recording": {
+      "append_leaderboard": true,
+      "leaderboard_path": "autoresearch/leaderboard.jsonl",
+      "results_dir": "autoresearch/results",
+      "write_result": true
+    },
+    "research_policy_path": "autoresearch/research_policy.json",
+    "strategy_family": "linear_cross_section_v1",
+    "strategy_path": "strategy.py",
+    "strategy_spec": {
+      "features": [
+        {
+          "kind": "funding_mean",
+          "lookback": 8,
+          "name": "funding_8h",
+          "transform": "rank"
+        },
+        {
+          "kind": "funding_mean",
+          "lookback": 24,
+          "name": "funding_24h",
+          "transform": "rank"
+        },
+        {
+          "kind": "funding_mean",
+          "lookback": 72,
+          "name": "funding_72h",
+          "transform": "rank"
+        },
+        {
+          "kind": "funding_momentum",
+          "lookback": 48,
+          "name": "fmom_48h",
+          "transform": "rank"
+        },
+        {
+          "kind": "funding_momentum",
+          "lookback": 72,
+          "name": "fmom_72h",
+          "transform": "rank"
+        },
+        {
+          "kind": "return",
+          "lookback": 48,
+          "name": "ret_48h",
+          "transform": "rank"
+        },
+        {
+          "kind": "return",
+          "lookback": 168,
+          "name": "ret_168h",
+          "transform": "rank"
+        }
+      ],
+      "min_train_rows": 200,
+      "model": {
+        "family": "ols",
+        "l2_reg": 0.0,
+        "prediction_clip": 3.0
+      },
+      "position_bucket": 5,
+      "target": {
+        "horizon": 48,
+        "kind": "forward_close_return",
+        "name": "fwd_48h_close"
+      },
+      "train_window_bars": 504
+    },
+    "synthetic": false,
+    "walk_forward_eval_bars": 500,
+    "walk_forward_runway_bars": 504,
+    "walk_forward_step_bars": 250
+  },
+  "strategy_family": {
+    "allowed_feature_kinds": [
+      "return",
+      "volatility",
+      "ma_gap",
+      "funding_mean",
+      "high_low_range",
+      "oi_change",
+      "funding_momentum"
+    ],
+    "allowed_model_families": [
+      "ols",
+      "ridge",
+      "lasso",
+      "elastic_net"
+    ],
+    "allowed_target_kinds": [
+      "next_open_to_close_return",
+      "next_close_to_close_return",
+      "forward_close_return"
+    ],
+    "allowed_transforms": [
+      "zscore",
+      "rank",
+      "none"
+    ],
+    "description": "Approved cross-sectional linear family for bounded Hyperliquid candidate search.",
+    "family_id": "linear_cross_section_v1",
+    "max_features": 12,
+    "max_position_bucket": 10,
+    "min_features": 1,
+    "min_position_bucket": 2
+  },
+  "strategy_hash": "sha256:8065d6f597a1729395a2fc4e828ffdcda307116ad5a6950894f47fb07ee85efb",
+  "strategy_path": "strategy.py",
+  "timeframes": {
+    "prediction_horizon_bars": 48,
+    "rebalance_every_bars": 24,
+    "train_window_bars": 504,
+    "warning": "prediction horizon (48) != rebalance frequency (24); model predicts a different timeframe than the holding period"
+  },
+  "timestamp": "2026-03-18T00:56:42.298523+00:00",
+  "walk_forward": null
+}

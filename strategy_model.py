@@ -152,6 +152,13 @@ def validate_strategy_spec(strategy_spec: StrategySpec, family: StrategyFamilyDe
         raise ValueError(
             f"model family '{strategy_spec.model.family}' is not allowed in strategy family '{family.family_id}'"
         )
+    h = strategy_spec.target.horizon
+    tw = strategy_spec.train_window_bars
+    if tw < 2 * h:
+        raise ValueError(
+            f"train_window_bars ({tw}) must be at least 2x target horizon ({h}) "
+            "so training labels can mature before fit time"
+        )
     seen_names: set[str] = set()
     for feature in strategy_spec.features:
         if feature.kind not in family.allowed_feature_kinds:
@@ -223,8 +230,15 @@ def build_training_dataset(
     train_assets: list[str] = []
     universe_kwargs = default_universe_kwargs(execution)
 
+    horizon = strategy_spec.target.horizon
     for pos in range(train_start_pos, current_pos):
         sample_ts = index[pos]
+        maturity_pos = pos + horizon
+        if maturity_pos >= len(index):
+            continue
+        maturity_ts = index[maturity_pos]
+        if maturity_ts > ts:
+            continue
         next_ts = index[pos + 1]
         universe = data.tradable_universe(sample_ts, **universe_kwargs)
         if len(universe) < min_assets:
@@ -265,6 +279,7 @@ def build_training_dataset(
         train_start = ""
         train_end = ""
 
+    unique_train_ts = set(train_timestamps)
     return {
         "feature_names": tuple(spec.name for spec in strategy_spec.features),
         "X_train": x_train,
@@ -276,6 +291,8 @@ def build_training_dataset(
         "train_timestamps": pd.DatetimeIndex(train_timestamps),
         "train_assets": tuple(train_assets),
         "current_timestamp": ts.isoformat(),
+        "n_unique_train_timestamps": len(unique_train_ts),
+        "matured_train_share": len(unique_train_ts) / strategy_spec.train_window_bars if strategy_spec.train_window_bars > 0 else 0.0,
     }
 
 

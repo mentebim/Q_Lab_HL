@@ -99,6 +99,7 @@ class CandidateSpec:
     strategy_path: str = "strategy.py"
     strategy_family: str = StrategyFamily().family_id
     research_policy_path: str = DEFAULT_RESEARCH_POLICY_PATH
+    research_metadata: dict[str, Any] | None = None
     strategy_spec: dict[str, Any] | None = None
     execution_overrides: dict[str, Any] | None = None
     data_dir: str = "data/active_1h/machine"

@@ -1,0 +1,609 @@
+{
+  "acceptance": {
+    "accepted": false,
+    "cascade_stage": "outer",
+    "failed_checks": [
+      "inner_outer_sign_consistency",
+      "sharpe_ci_includes_zero"
+    ],
+    "judged_period": "outer",
+    "primary_metric": "periods.test.sharpe_annualized",
+    "primary_metric_value": null,
+    "reference_candidate_id": null,
+    "reference_experiment_id": null,
+    "reference_primary_value": null,
+    "review_reasons": [],
+    "status": "rejected"
+  },
+  "candidate_id": "short_horizon_v2",
+  "data": {
+    "assets": 60,
+    "bars": 5000,
+    "mode": "parquet",
+    "path": "data/active_1h/machine"
+  },
+  "execution": {
+    "assumed_leverage": 3.0,
+    "bars_per_year": 8760,
+    "listing_cooldown_bars": 0,
+    "max_abs_weight": 0.2,
+    "max_gross_exposure": 1.5,
+    "max_group_gross": 0.35,
+    "max_net_deviation": 0.05,
+    "max_single_order_notional_usd": 250.0,
+    "min_dollar_volume": 0.0,
+    "min_history_bars": 0,
+    "min_price": 0.0,
+    "min_trade_notional_usd": 10.0,
+    "rebalance_every_bars": 24,
+    "reference_account_value_usd": 250.0,
+    "slippage_bps": 3.0,
+    "taker_fee_bps": 4.5,
+    "target_gross_exposure": 1.0,
+    "target_margin_usage_ratio": 0.5,
+    "target_net_exposure": 0.0
+  },
+  "experiment_id": "short_horizon_v2",
+  "express_filter": {
+    "data": {
+      "assets": [
+        "BTC",
+        "ETH",
+        "HYPE",
+        "SOL",
+        "XRP",
+        "TRUMP",
+        "ZEC",
+        "TAO",
+        "SUI",
+        "kPEPE",
+        "FARTCOIN",
+        "DOGE",
+        "PAXG",
+        "PUMP",
+        "XPL",
+        "LINK",
+        "VVV",
+        "LIT",
+        "BNB",
+        "NEAR"
+      ],
+      "bars": 2880,
+      "end": "2026-03-16 18:00:00",
+      "start": "2025-11-16 19:00:00"
+    },
+    "enabled": true,
+    "failed_checks": [],
+    "metrics": {
+      "active_annualized_return": 1.594337277269899,
+      "active_sharpe_annualized": 1.5932433159223665,
+      "annualized_return": 1.4857997196762147,
+      "avg_child_orders_per_rebalance": 10.669811320754716,
+      "avg_gross_exposure": 0.9996069182389937,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": -6.382473166329762e-18,
+      "bars": 2544,
+      "beta_penalty": 0.0,
+      "beta_to_market": -0.050947461697887456,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.10369372876801536,
+      "fee_and_slippage_share": 0.1477990744566793,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": 0.04151662380022275,
+      "implementation_shortfall_penalty": 0.1163153050331371,
+      "implemented_delta_notional_total_usd": 40419.136470233214,
+      "instability_penalty": 0.38130739109011885,
+      "max_drawdown": -0.0914914944246723,
+      "period": "express_all",
+      "rolling_median_sharpe": 2.746314178985184,
+      "rolling_sharpe_iqr": 8.542049273934126,
+      "score_inner": 1.9279430581305368,
+      "sharpe_annualized": 2.8163665839724676,
+      "sharpe_ci": [
+        -0.3692876843547471,
+        4.228544453918676
+      ],
+      "skipped_notional_ratio": 0.029078826258284275,
+      "skipped_notional_total_usd": 1210.5421930374516,
+      "trade_count": 106,
+      "turnover": 0.5236437567707002,
+      "turnover_penalty": 0.21705469596337526
+    },
+    "passed": true,
+    "period": "outer",
+    "primary_metric": "sharpe_annualized",
+    "primary_metric_value": 2.8163665839724676,
+    "status": "passed"
+  },
+  "git_commit": "bac258e1ee3d00c787dda153012b3da6ee56d224",
+  "hypothesis": "Retry 24h horizon without data-sparse features (oi_change, hlr). All rank transforms. Focused on return momentum + funding + vol. Higher regularization (l2=10) to reduce beta.",
+  "model_fit": {
+    "model_fit": {
+      "coefficients": {
+        "funding_24h": 0.012233330056615508,
+        "ma_gap_48h": -0.008422015610526832,
+        "ret_24h": 0.003945169215480072,
+        "ret_72h": 0.016416691423142477,
+        "vol_48h": 0.005261316340114366
+      },
+      "diagnostics": {
+        "cross_sectional_pearson_ic_mean": 0.11538513551185556,
+        "cross_sectional_pearson_ic_median": 0.10263260395843168,
+        "cross_sectional_pearson_ic_positive_share": 0.5992063492063492,
+        "cross_sectional_rank_ic_mean": 0.09203962286669053,
+        "cross_sectional_rank_ic_median": 0.10375939849624059,
+        "cross_sectional_rank_ic_positive_share": 0.6170634920634921,
+        "n_features": 5,
+        "top_bottom_quintile_target_spread_mean": 0.017641741834083652,
+        "top_bottom_quintile_target_spread_median": 0.00859370527941114,
+        "train_adj_r2": 0.009408076636321483,
+        "train_mae": 0.04590838927687728,
+        "train_prediction_target_corr": 0.0995048187112955,
+        "train_prediction_target_rank_corr": 0.06086100909573513,
+        "train_r2": 0.009899490429040925,
+        "train_rmse": 0.06379402478398986
+      },
+      "family": "ridge",
+      "intercept": -0.006591121688051384,
+      "l1_reg": 0.0,
+      "l2_reg": 10.0,
+      "n_train_rows": 10080,
+      "train_end": "2026-02-14T17:00:00",
+      "train_start": "2026-01-24T18:00:00"
+    },
+    "strategy_spec": {
+      "features": [
+        {
+          "clip": null,
+          "kind": "return",
+          "lookback": 24,
+          "name": "ret_24h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "return",
+          "lookback": 72,
+          "name": "ret_72h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "volatility",
+          "lookback": 48,
+          "name": "vol_48h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "ma_gap",
+          "lookback": 48,
+          "name": "ma_gap_48h",
+          "transform": "rank"
+        },
+        {
+          "clip": null,
+          "kind": "funding_mean",
+          "lookback": 24,
+          "name": "funding_24h",
+          "transform": "rank"
+        }
+      ],
+      "min_train_rows": 200,
+      "model": {
+        "family": "ridge",
+        "l1_reg": 0.0,
+        "l2_reg": 10.0,
+        "prediction_clip": 3.0
+      },
+      "position_bucket": 5,
+      "target": {
+        "horizon": 24,
+        "kind": "forward_close_return",
+        "name": "fwd_24h_close"
+      },
+      "train_window_bars": 504
+    }
+  },
+  "notes": "24h horizon retry without oi_change/hlr. Cleaner feature set with higher regularization.",
+  "period_model_fit": {
+    "inner": {
+      "model_fit": {
+        "coefficients": {
+          "funding_24h": -0.0017831490443018514,
+          "ma_gap_48h": 0.005483716014324717,
+          "ret_24h": -0.0048690303795716474,
+          "ret_72h": 0.008646763533954233,
+          "vol_48h": 0.009659694719413863
+        },
+        "diagnostics": {
+          "cross_sectional_pearson_ic_mean": 0.11193878465539445,
+          "cross_sectional_pearson_ic_median": 0.13988021326847755,
+          "cross_sectional_pearson_ic_positive_share": 0.6527777777777778,
+          "cross_sectional_rank_ic_mean": 0.07152106456617734,
+          "cross_sectional_rank_ic_median": 0.10225563909774435,
+          "cross_sectional_rank_ic_positive_share": 0.6150793650793651,
+          "n_features": 5,
+          "top_bottom_quintile_target_spread_mean": 0.01104937206248763,
+          "top_bottom_quintile_target_spread_median": 0.00995263133394575,
+          "train_adj_r2": 0.009142864100192383,
+          "train_mae": 0.029203206075157778,
+          "train_prediction_target_corr": 0.09816336598500497,
+          "train_prediction_target_rank_corr": 0.0349839953687816,
+          "train_r2": 0.00963440945980143,
+          "train_rmse": 0.04223344430288382
+        },
+        "family": "ridge",
+        "intercept": 0.006454932065074283,
+        "l1_reg": 0.0,
+        "l2_reg": 10.0,
+        "n_train_rows": 10080,
+        "train_end": "2026-01-07T03:00:00",
+        "train_start": "2025-12-17T04:00:00"
+      },
+      "strategy_spec": {
+        "features": [
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 24,
+            "name": "ret_24h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 72,
+            "name": "ret_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "volatility",
+            "lookback": 48,
+            "name": "vol_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "ma_gap",
+            "lookback": 48,
+            "name": "ma_gap_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 24,
+            "name": "funding_24h",
+            "transform": "rank"
+          }
+        ],
+        "min_train_rows": 200,
+        "model": {
+          "family": "ridge",
+          "l1_reg": 0.0,
+          "l2_reg": 10.0,
+          "prediction_clip": 3.0
+        },
+        "position_bucket": 5,
+        "target": {
+          "horizon": 24,
+          "kind": "forward_close_return",
+          "name": "fwd_24h_close"
+        },
+        "train_window_bars": 504
+      }
+    },
+    "outer": {
+      "model_fit": {
+        "coefficients": {
+          "funding_24h": 0.012233330056615508,
+          "ma_gap_48h": -0.008422015610526832,
+          "ret_24h": 0.003945169215480072,
+          "ret_72h": 0.016416691423142477,
+          "vol_48h": 0.005261316340114366
+        },
+        "diagnostics": {
+          "cross_sectional_pearson_ic_mean": 0.11538513551185556,
+          "cross_sectional_pearson_ic_median": 0.10263260395843168,
+          "cross_sectional_pearson_ic_positive_share": 0.5992063492063492,
+          "cross_sectional_rank_ic_mean": 0.09203962286669053,
+          "cross_sectional_rank_ic_median": 0.10375939849624059,
+          "cross_sectional_rank_ic_positive_share": 0.6170634920634921,
+          "n_features": 5,
+          "top_bottom_quintile_target_spread_mean": 0.017641741834083652,
+          "top_bottom_quintile_target_spread_median": 0.00859370527941114,
+          "train_adj_r2": 0.009408076636321483,
+          "train_mae": 0.04590838927687728,
+          "train_prediction_target_corr": 0.0995048187112955,
+          "train_prediction_target_rank_corr": 0.06086100909573513,
+          "train_r2": 0.009899490429040925,
+          "train_rmse": 0.06379402478398986
+        },
+        "family": "ridge",
+        "intercept": -0.006591121688051384,
+        "l1_reg": 0.0,
+        "l2_reg": 10.0,
+        "n_train_rows": 10080,
+        "train_end": "2026-02-14T17:00:00",
+        "train_start": "2026-01-24T18:00:00"
+      },
+      "strategy_spec": {
+        "features": [
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 24,
+            "name": "ret_24h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "return",
+            "lookback": 72,
+            "name": "ret_72h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "volatility",
+            "lookback": 48,
+            "name": "vol_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "ma_gap",
+            "lookback": 48,
+            "name": "ma_gap_48h",
+            "transform": "rank"
+          },
+          {
+            "clip": null,
+            "kind": "funding_mean",
+            "lookback": 24,
+            "name": "funding_24h",
+            "transform": "rank"
+          }
+        ],
+        "min_train_rows": 200,
+        "model": {
+          "family": "ridge",
+          "l1_reg": 0.0,
+          "l2_reg": 10.0,
+          "prediction_clip": 3.0
+        },
+        "position_bucket": 5,
+        "target": {
+          "horizon": 24,
+          "kind": "forward_close_return",
+          "name": "fwd_24h_close"
+        },
+        "train_window_bars": 504
+      }
+    }
+  },
+  "periods": {
+    "inner": {
+      "active_annualized_return": -0.06904061800169603,
+      "active_sharpe_annualized": 0.3418613728948174,
+      "annualized_return": -0.1970505568884724,
+      "avg_child_orders_per_rebalance": 10.959183673469388,
+      "avg_gross_exposure": 0.9991423670668954,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": -3.356377497258728e-18,
+      "bars": 1166,
+      "beta_penalty": 0.11391581509334145,
+      "beta_to_market": -0.13797193836444716,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.04272889057783369,
+      "fee_and_slippage_share": -0.9204336404834028,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": -0.000513745877199817,
+      "implementation_shortfall_penalty": 0.15380086510318317,
+      "implemented_delta_notional_total_usd": 17739.46423704526,
+      "instability_penalty": 1.064594994287449,
+      "max_drawdown": -0.15658566376034944,
+      "period": "inner",
+      "rolling_median_sharpe": -1.1496425050951462,
+      "rolling_sharpe_iqr": 13.097299961916328,
+      "score_inner": -2.714694143975186,
+      "sharpe_annualized": -0.4056509083335285,
+      "sharpe_ci": [
+        -5.1865677375519725,
+        3.708603542581744
+      ],
+      "skipped_notional_ratio": 0.03845021627579579,
+      "skipped_notional_total_usd": 709.3613332107763,
+      "trade_count": 49,
+      "turnover": 0.502008859054586,
+      "turnover_penalty": 0.19001107381823257
+    },
+    "outer": {
+      "active_annualized_return": 21.161972802770194,
+      "active_sharpe_annualized": 3.890170270504678,
+      "annualized_return": 1.1701225099548465,
+      "avg_child_orders_per_rebalance": 11.538461538461538,
+      "avg_gross_exposure": 0.9989270386266095,
+      "avg_multi_order_assets_per_rebalance": 0.0,
+      "avg_net_exposure": -8.174791315976541e-18,
+      "bars": 932,
+      "beta_penalty": 0.013101600714783238,
+      "beta_to_market": -0.10436720023826108,
+      "capacity_penalty": 0.0,
+      "concentration_penalty": 0.007241663423763672,
+      "fee_and_slippage_share": 0.17798569173109982,
+      "filtered_assets_total": 0,
+      "fraction_rebalances_with_multi_order": 0.0,
+      "funding_pnl_share": -0.016371037322982115,
+      "implementation_shortfall_penalty": 0.1175576548522196,
+      "implemented_delta_notional_total_usd": 15541.867789991953,
+      "instability_penalty": 0.7167186117866018,
+      "max_drawdown": -0.09289508103776178,
+      "period": "outer",
+      "rolling_median_sharpe": 1.598422660112067,
+      "rolling_sharpe_iqr": 10.778124078577346,
+      "score_inner": 0.4970097643421435,
+      "sharpe_annualized": 2.244709206831694,
+      "sharpe_ci": [
+        -3.324266021280235,
+        7.726401935985246
+      ],
+      "skipped_notional_ratio": 0.0293894137130549,
+      "skipped_notional_total_usd": 470.59695083383343,
+      "trade_count": 39,
+      "turnover": 0.547434691994044,
+      "turnover_penalty": 0.24679336499255508
+    }
+  },
+  "promotion_eligibility": {
+    "accepted_result": false,
+    "express_filter_passed": true,
+    "live_eligible": false,
+    "paper_eligible": false,
+    "reason": "judge_not_accepted"
+  },
+  "research_policy_path": "autoresearch/research_policy.json",
+  "result_path": "autoresearch/results/2026-03-17T22_25_08.218036_00_00_short_horizon_v2_rejected.json",
+  "spec": {
+    "acceptance": {
+      "compare_to_best": false,
+      "compare_to_candidate_id": null,
+      "max_beta_abs": 0.15,
+      "max_turnover": 0.75,
+      "min_primary_lift": 0.0,
+      "primary_metric": "periods.test.sharpe_annualized",
+      "primary_min": 0.3
+    },
+    "candidate_id": "short_horizon_v2",
+    "data_dir": "data/active_1h/machine",
+    "enable_walk_forward": true,
+    "evaluation_periods": [
+      "inner",
+      "outer",
+      "test"
+    ],
+    "execution_overrides": {
+      "rebalance_every_bars": 24
+    },
+    "experiment_id": "short_horizon_v2",
+    "express_filter": {
+      "bootstrap_samples": 10,
+      "enabled": true,
+      "max_assets": 20,
+      "max_beta_abs": 0.25,
+      "max_turnover": 1.0,
+      "period": "outer",
+      "primary_metric": "sharpe_annualized",
+      "primary_min": -0.5,
+      "trailing_bars": 2880
+    },
+    "hypothesis": "Retry 24h horizon without data-sparse features (oi_change, hlr). All rank transforms. Focused on return momentum + funding + vol. Higher regularization (l2=10) to reduce beta.",
+    "notes": "24h horizon retry without oi_change/hlr. Cleaner feature set with higher regularization.",
+    "recording": {
+      "append_leaderboard": true,
+      "leaderboard_path": "autoresearch/leaderboard.jsonl",
+      "results_dir": "autoresearch/results",
+      "write_result": true
+    },
+    "research_policy_path": "autoresearch/research_policy.json",
+    "strategy_family": "linear_cross_section_v1",
+    "strategy_path": "strategy.py",
+    "strategy_spec": {
+      "features": [
+        {
+          "kind": "return",
+          "lookback": 24,
+          "name": "ret_24h",
+          "transform": "rank"
+        },
+        {
+          "kind": "return",
+          "lookback": 72,
+          "name": "ret_72h",
+          "transform": "rank"
+        },
+        {
+          "kind": "volatility",
+          "lookback": 48,
+          "name": "vol_48h",
+          "transform": "rank"
+        },
+        {
+          "kind": "ma_gap",
+          "lookback": 48,
+          "name": "ma_gap_48h",
+          "transform": "rank"
+        },
+        {
+          "kind": "funding_mean",
+          "lookback": 24,
+          "name": "funding_24h",
+          "transform": "rank"
+        }
+      ],
+      "min_train_rows": 200,
+      "model": {
+        "family": "ridge",
+        "l2_reg": 10.0,
+        "prediction_clip": 3.0
+      },
+      "position_bucket": 5,
+      "target": {
+        "horizon": 24,
+        "kind": "forward_close_return",
+        "name": "fwd_24h_close"
+      },
+      "train_window_bars": 504
+    },
+    "synthetic": false,
+    "walk_forward_eval_bars": 500,
+    "walk_forward_runway_bars": 504,
+    "walk_forward_step_bars": 250
+  },
+  "strategy_family": {
+    "allowed_feature_kinds": [
+      "return",
+      "volatility",
+      "ma_gap",
+      "funding_mean",
+      "high_low_range",
+      "oi_change",
+      "funding_momentum"
+    ],
+    "allowed_model_families": [
+      "ols",
+      "ridge",
+      "lasso",
+      "elastic_net"
+    ],
+    "allowed_target_kinds": [
+      "next_open_to_close_return",
+      "next_close_to_close_return",
+      "forward_close_return"
+    ],
+    "allowed_transforms": [
+      "zscore",
+      "rank",
+      "none"
+    ],
+    "description": "Approved cross-sectional linear family for bounded Hyperliquid candidate search.",
+    "family_id": "linear_cross_section_v1",
+    "max_features": 12,
+    "max_position_bucket": 10,
+    "min_features": 1,
+    "min_position_bucket": 2
+  },
+  "strategy_hash": "sha256:8065d6f597a1729395a2fc4e828ffdcda307116ad5a6950894f47fb07ee85efb",
+  "strategy_path": "strategy.py",
+  "timeframes": {
+    "prediction_horizon_bars": 24,
+    "rebalance_every_bars": 24,
+    "train_window_bars": 504
+  },
+  "timestamp": "2026-03-17T22:25:08.218036+00:00",
+  "walk_forward": null
+}

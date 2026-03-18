@@ -60,7 +60,10 @@ def signals(data, ts):
         execution=EXECUTION,
         strategy_spec=SPEC,
     )
-    if len(dataset["y_train"]) < SPEC.min_train_rows or len(dataset["current_assets"]) < SPEC.position_bucket * 2:
+    min_unique_ts = max(24, SPEC.target.horizon)
+    if (len(dataset["y_train"]) < SPEC.min_train_rows
+            or dataset.get("n_unique_train_timestamps", 0) < min_unique_ts
+            or len(dataset["current_assets"]) < SPEC.position_bucket * 2):
         return pd.Series(dtype=float)
     model = fit_linear_model(
         dataset["X_train"],
@@ -78,6 +81,13 @@ def signals(data, ts):
     _STATE["last_fit"] = {
         "strategy_spec": SPEC.summary(),
         "model_fit": model.summary(),
+        "train_quality": {
+            "n_train_rows": len(dataset["y_train"]),
+            "n_unique_train_timestamps": dataset.get("n_unique_train_timestamps", 0),
+            "matured_train_share": dataset.get("matured_train_share", 0.0),
+            "target_horizon": SPEC.target.horizon,
+            "train_window_bars": SPEC.train_window_bars,
+        },
     }
     scores = predict_scores(
         model,

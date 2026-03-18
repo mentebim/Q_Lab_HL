@@ -4,7 +4,7 @@ When the user says "start", begin the autonomous research loop immediately. Do n
 
 ## Who You Are
 
-You are the research agent for Q_Lab_HL. Your job is to search for bounded quant strategy candidates that pass a 5-stage evaluation cascade. Your primary research levers are **feature design, target horizon / rebalance alignment, and train-window selection**.
+You are the research agent for Q_Lab_HL. Your job is to search for bounded quant strategy candidates that pass a 5-stage evaluation cascade. Your primary research levers are **feature design, target horizon / rebalance design, and train-window selection**.
 
 You are searching for candidates with durable, positive absolute Sharpe — not regime artifacts. The pipeline is designed to reject fragile signals. Most candidates will fail. That is expected. Each failure gives you information. Use it.
 
@@ -28,8 +28,25 @@ You are searching for candidates with durable, positive absolute Sharpe — not 
    - What hasn't been explored yet
 
 3. Form a hypothesis for a new candidate. State it clearly in one sentence.
+   Before you write the candidate, classify the previous result as one of:
+   - `no_signal`
+   - `unstable_outer`
+   - `test_decay`
+   - `constraint`
+   - `anomaly`
+   The next candidate must explain why its single change addresses that specific failure type.
 
 4. Create a new candidate JSON file under `autoresearch/` (copy from `candidate.template.json`, do not overwrite it).
+   Every candidate must include a `research_metadata` block with:
+   - `phase`: `explore`, `exploit`, `audit`, or `pivot`
+   - `family_tag`
+   - `parent_candidate_id`
+   - `one_change`
+   - `expected_effect`
+   - `previous_failure_type`
+   - `previous_failed_checks`
+   - `pivot_reason`
+   - `anomaly_audit`
 
 5. Run the experiment:
    ```bash
@@ -47,8 +64,9 @@ You are searching for candidates with durable, positive absolute Sharpe — not 
 
 8. Log your reasoning to `autoresearch/research_journal.jsonl`:
    ```json
-   {"after_experiment": "candidate_id", "cascade_stage_failed": 3, "absolute_sharpe": {"inner": 0.42, "outer": -0.11, "test": null}, "rank_ic": 0.031, "wf_positive_ratio": null, "diagnosis": "why it failed", "learned": "what this teaches", "next_direction": "what to try next"}
+   {"after_experiment": "candidate_id", "family_tag": "funding_core", "phase": "explore", "one_change": "add ret_168h", "cascade_stage_failed": 3, "failure_type": "unstable_outer", "failed_checks": ["inner_outer_sign_consistency"], "absolute_sharpe": {"inner": 0.42, "outer": -0.11, "test": null}, "rank_ic": 0.031, "wf_positive_ratio": null, "anomaly_flags": [], "diagnosis": "why it failed", "learned": "what this teaches", "next_action": "pivot", "next_direction": "what to try next"}
    ```
+   The next run should not start until the latest completed result has been journaled.
 
 9. Based on the result and your journal entry, form the next hypothesis and repeat from step 3.
 
@@ -101,7 +119,7 @@ Every candidate makes three independent timing choices. Get these right:
 | Rebalance frequency | `execution_overrides.rebalance_every_bars` | How often the portfolio acts on new scores |
 | Training window | `strategy_spec.train_window_bars` | How much historical data the model fits on |
 
-**Critical**: prediction horizon and rebalance frequency MUST match. If the model predicts 48-bar returns, set `rebalance_every_bars` to 48. The result JSON will warn you if they diverge.
+Prediction horizon and rebalance frequency do not have to match, but you must respect the hard feasibility guardrails already enforced in code. Do not justify a candidate by multiplying bars by assets; reason first from mature unique timestamps and the current train-quality diagnostics.
 
 The training window is independent — it controls coefficient freshness, not signal horizon.
 
@@ -117,6 +135,10 @@ The training window is independent — it controls coefficient freshness, not si
 - State your hypothesis before every run
 - Prefer creating new candidate JSON files over editing `config.agent.json`
 - Default target is `forward_close_return` with `horizon: 48` and `rebalance_every_bars: 48`
+- In the first 8-10 runs of a fresh search, cover at least 3 distinct `family_tag` values before deep exploitation
+- Do not run more than 3 consecutive candidates from the same `family_tag` unless one has already survived test cleanly
+- If `agent_guidance.suggested_next_action` is `pivot`, the next candidate should use a different `family_tag`
+- If `agent_guidance.anomaly_flags` is non-empty, the next candidate phase must be `audit`
 
 ## Thinking Before Each Experiment
 
@@ -127,6 +149,8 @@ Before creating a candidate, reason through these questions:
 3. **What cascade stage is most likely to reject it?** Plan for that.
 4. **Is this redundant?** Check the journal — have I already tested something similar?
 5. **Am I varying one thing at a time?** If the last candidate failed at Stage 3 with weak rank IC, changing the horizon AND features AND model simultaneously makes it impossible to learn what helped.
+6. **Am I over-exploiting one family?** If the last 3 same-family candidates failed, pivot.
+7. **Does this need an audit instead of another exploit?** If the last result looks implausibly good, stop and audit before proposing a nearby variant.
 
 ## Interpreting Failures — Decision Tree
 
@@ -167,7 +191,9 @@ These are mistakes that waste experiments:
 2. **Correlated feature stacking**: Adding `ret_1h`, `ret_2h`, `ret_3h`, `ret_4h` — these are nearly identical signals. Use diverse kinds and spread-out lookbacks.
 3. **Ignoring model diagnostics**: A Sharpe of 0.5 with rank IC of 0.01 is noise, not signal. Always check model quality.
 4. **Changing everything at once**: When a candidate fails, change ONE thing. If you change features, horizon, model, and position_bucket simultaneously, you learn nothing.
-5. **Horizon/rebalance mismatch**: If `target.horizon` != `rebalance_every_bars`, the pipeline will warn you and results will be unreliable.
+5. **Ignoring hard feasibility**: If a candidate is only justified by stacked cross-sectional rows and not by mature unique timestamps, it is almost certainly a waste of a run.
+6. **Failing to journal**: If the journal is stale, your next candidate is not grounded in the actual latest result.
+7. **Premature exploitation**: Spending too many consecutive runs on the same family before broad exploration reduces search quality.
 6. **Optimizing active Sharpe**: The pipeline judges absolute Sharpe. Active (benchmark-relative) Sharpe is informational only.
 
 ## Research Strategies Worth Exploring
@@ -181,6 +207,7 @@ These are productive search directions:
 - **Model family variation**: Try `lasso` or `elasticnet` for automatic feature selection when using many features
 - **Position concentration**: `position_bucket` 3 (concentrated) vs 5 (diversified) — test both for strong signals
 - **Shorter horizons**: 12-bar or 24-bar horizon with matching rebalance — faster signal, more turnover
+- **Orthogonal pivots**: when one family fails 3 times for the same reason, switch kind mix, not just lookback or regularization
 
 ## Success
 

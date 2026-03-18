@@ -5,6 +5,21 @@
   "strategy_path": "strategy.py",
   "strategy_family": "linear_cross_section_v1",
   "research_policy_path": "autoresearch/research_policy.json",
+  "research_metadata": {
+    "phase": "explore",
+    "family_tag": "baseline",
+    "parent_candidate_id": null,
+    "one_change": "Seed baseline config.",
+    "expected_effect": "Establish a clean starting point and reveal the first binding failure stage.",
+    "previous_failure_type": null,
+    "previous_failed_checks": [],
+    "pivot_reason": null,
+    "anomaly_audit": {
+      "required": false,
+      "trigger_source_candidate_id": null,
+      "reason": null
+    }
+  },
   "strategy_spec": {
     "train_window_bars": 504,
     "min_train_rows": 200,
@@ -74,7 +89,7 @@
     "test"
   ],
   "enable_walk_forward": true,
-  "notes": "Baseline config for agent. Target horizon should match rebalance_every_bars.",
+  "notes": "Baseline config for agent. Keep research_metadata accurate, journal every result, and use phase/family tags deliberately.",
   "express_filter": {
     "enabled": true,
     "period": "outer",

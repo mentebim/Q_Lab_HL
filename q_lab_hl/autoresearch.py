@@ -35,6 +35,7 @@ def load_experiment_spec(path: str | Path) -> ExperimentSpec:
         strategy_path=str(payload.get("strategy_path") or defaults.strategy_path),
         strategy_family=str(payload.get("strategy_family") or defaults.strategy_family),
         research_policy_path=str(payload.get("research_policy_path") or defaults.research_policy_path),
+        research_metadata=payload.get("research_metadata"),
         strategy_spec=payload.get("strategy_spec"),
         execution_overrides=payload.get("execution_overrides"),
         data_dir=str(payload.get("data_dir") or defaults.data_dir),
@@ -122,6 +123,7 @@ def run_experiment(
         "experiment_id": spec.experiment_id,
         "candidate_id": spec.candidate_id,
         "hypothesis": spec.hypothesis,
+        "research_metadata": _jsonable(spec.research_metadata),
         "notes": spec.notes,
         "strategy_path": spec.strategy_path,
         "strategy_family": get_strategy_family(spec.strategy_family).summary(),
@@ -211,6 +213,7 @@ def run_experiment(
 
     # --- Final acceptance (WF gates, reference comparison) ---
     result["acceptance"] = evaluate_acceptance(result, spec.acceptance, leaderboard)
+    result["agent_guidance"] = build_agent_guidance(result, leaderboard)
     return _finalize_result(result, spec, leaderboard, write_result, append_leaderboard)
 
 
@@ -312,6 +315,8 @@ def _build_cascade_rejection(
 
 
 def _finalize_result(result, spec, leaderboard, write_result, append_leaderboard):
+    if "agent_guidance" not in result:
+        result["agent_guidance"] = build_agent_guidance(result, leaderboard)
     result["promotion_eligibility"] = build_promotion_eligibility(result).summary()
     if write_result:
         output_path = write_experiment_result(result, spec.recording.results_dir)
@@ -491,6 +496,71 @@ def preferred_period(periods: dict[str, Any]) -> str:
     return next(iter(periods), "inner")
 
 
+def build_agent_guidance(result: dict[str, Any], leaderboard: list[dict[str, Any]]) -> dict[str, Any]:
+    metadata = result.get("research_metadata") or {}
+    family_tag = metadata.get("family_tag")
+    phase = metadata.get("phase")
+    periods = result.get("periods", {})
+    outer_metrics = periods.get("outer", {})
+    test_metrics = periods.get("test", {})
+    walk_forward = result.get("walk_forward") or {}
+
+    anomaly_flags: list[str] = []
+    outer_sharpe = as_float(outer_metrics.get("sharpe_annualized"))
+    test_sharpe = as_float(test_metrics.get("sharpe_annualized"))
+    if outer_sharpe is not None and outer_sharpe > 5.0:
+        anomaly_flags.append("outer_sharpe_gt_5")
+    if test_sharpe is not None and test_sharpe > 5.0:
+        anomaly_flags.append("test_sharpe_gt_5")
+    if as_float(walk_forward.get("positive_sharpe_ratio")) == 1.0 and int(walk_forward.get("windows", 0) or 0) >= 5:
+        anomaly_flags.append("walk_forward_all_positive")
+    prior_test_values = [
+        value
+        for value in (
+            as_float(row.get("periods", {}).get("test", {}).get("sharpe_annualized"))
+            for row in leaderboard
+        )
+        if value is not None
+    ]
+    prior_best_test = max(prior_test_values) if prior_test_values else None
+    if (
+        prior_best_test is not None
+        and prior_best_test > 0.0
+        and test_sharpe is not None
+        and test_sharpe > 2.0 * prior_best_test
+    ):
+        anomaly_flags.append("test_sharpe_gt_2x_prior_best")
+
+    recent_same_family_repeat_count = 0
+    recent_same_family_failure_count = 0
+    if family_tag:
+        for row in reversed(leaderboard):
+            row_family = (row.get("research_metadata") or {}).get("family_tag")
+            if row_family != family_tag:
+                break
+            recent_same_family_repeat_count += 1
+            if not row.get("accepted"):
+                recent_same_family_failure_count += 1
+
+    if anomaly_flags:
+        suggested_next_action = "audit"
+    elif recent_same_family_failure_count >= 3:
+        suggested_next_action = "pivot"
+    elif result.get("acceptance", {}).get("accepted"):
+        suggested_next_action = "exploit"
+    else:
+        suggested_next_action = "explore"
+
+    return {
+        "family_tag": family_tag,
+        "phase": phase,
+        "anomaly_flags": anomaly_flags,
+        "recent_same_family_repeat_count": recent_same_family_repeat_count,
+        "recent_same_family_failure_count": recent_same_family_failure_count,
+        "suggested_next_action": suggested_next_action,
+    }
+
+
 def select_reference_record(
     leaderboard: list[dict[str, Any]],
     policy: AcceptancePolicy,
@@ -520,6 +590,7 @@ def leaderboard_record(result: dict[str, Any]) -> dict[str, Any]:
         "experiment_id": result["experiment_id"],
         "candidate_id": result["candidate_id"],
         "hypothesis": result["hypothesis"],
+        "research_metadata": result.get("research_metadata"),
         "strategy_path": result["strategy_path"],
         "strategy_hash": result["strategy_hash"],
         "git_commit": result["git_commit"],
@@ -538,6 +609,7 @@ def leaderboard_record(result: dict[str, Any]) -> dict[str, Any]:
             "turnover": result["periods"].get(judged_period, {}).get("turnover"),
         },
         "acceptance": result["acceptance"],
+        "agent_guidance": result.get("agent_guidance"),
         "result_path": result.get("result_path"),
     }
 
